@@ -9,7 +9,9 @@ import (
 
 func main(){
 
+
     numFloors := 4
+	
 
     drivers.Init("localhost:15657", numFloors)
     
@@ -24,16 +26,34 @@ func main(){
 	queue 		:= elevator.NewOrderQueue()
 	fsmInstance := elevator.NewElevatorFSM(queue)   
     
-    go drivers.PollButtons(drv_buttons)
-    go drivers.PollFloorSensor(drv_floors)
+    /*
+	go func() {
+		drivers.PollButtons(drv_buttons)
+        drivers.PollFloorSensor(drv_floors)
+        drivers.PollObstructionSwitch(drv_obstr)
+        drivers.PollStopButton(drv_stop)
+	}()
+
+	*/
+	go drivers.PollButtons(drv_buttons)
+	go drivers.PollFloorSensor(drv_floors)
     go drivers.PollObstructionSwitch(drv_obstr)
     go drivers.PollStopButton(drv_stop)
-    
+
+	/*
 	go func() {
 		for order := range queue.NextOrder {
-			fsmInstance.NextOrder <- order
+			fmt.Println("📨 Main: Sending order to FSM -> Floor", order)
+	
+			select {
+			case fsmInstance.NextOrder <- order:
+				fmt.Println("✅ Order successfully sent to FSM")
+			default:
+				fmt.Println("🚨 ERROR: FSM is NOT reading `NextOrder`, order lost!")
+			}
 		}
 	}()
+	*/
 	
     
 		for {
