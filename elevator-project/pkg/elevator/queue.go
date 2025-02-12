@@ -24,17 +24,6 @@ func DynamicQueueManager(newOrders <-chan drivers.ButtonEvent, elevatorReady <-c
 		case currentFloor := <-elevatorReady:
 			if nextOrder, found := chooseNextOrder(rm, currentFloor); found {
 				sendOrder <- nextOrder
-				/*
-					switch nextOrder.Button {
-					case drivers.BT_Cab:
-						_ = rm.ClearCabRequest(nextOrder.Floor)
-					case drivers.BT_HallUp:
-						_ = rm.ClearHallRequest(nextOrder.Floor, 0)
-					case drivers.BT_HallDown:
-						_ = rm.ClearHallRequest(nextOrder.Floor, 1)
-					}
-					drivers.SetButtonLamp(nextOrder.Button, nextOrder.Floor, false) //Might have to move this at some point
-				*/
 			}
 		}
 	}

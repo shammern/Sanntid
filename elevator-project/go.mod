@@ -1,5 +1,5 @@
-module barebone
+module elevator-project
 
 go 1.16
 
-replace barebone => ./
+replace elevator-project => ./

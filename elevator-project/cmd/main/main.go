@@ -11,14 +11,11 @@ func main() {
 
 	drivers.Init("localhost:15657", numFloors)
 
-	// Create the request matrix.
 	rm := orders.NewRequestMatrix(numFloors)
 
-	// Instantiate the elevator FSM with the request matrix and initial floor.
 	elevatorFSM := elevator.NewElevator(rm)
 	go elevatorFSM.Run()
 
-	// Create channels to receive events from the drivers.
 	drvButtons := make(chan drivers.ButtonEvent)
 	drvFloors := make(chan int)
 	drvObstr := make(chan bool)
@@ -32,7 +29,6 @@ func main() {
 	for {
 		select {
 		case be := <-drvButtons:
-			// Update the request matrix with the new order.
 			switch be.Button {
 			case drivers.BT_Cab:
 				_ = rm.SetCabRequest(be.Floor, true)
@@ -42,14 +38,11 @@ func main() {
 				_ = rm.SetHallRequest(be.Floor, 1, true)
 			}
 			drivers.SetButtonLamp(be.Button, be.Floor, true)
-			//rm.DebugPrint()
 
 		case <-drvFloors:
-			// Notify the FSM that the elevator has arrived at a floor.
 			elevatorFSM.UpdateElevatorState(elevator.EventArrivedAtFloor)
 
 		case obstr := <-drvObstr:
-			// Notify the FSM of door obstruction events.
 			if obstr {
 				elevatorFSM.UpdateElevatorState(elevator.EventDoorObstructed)
 			} else {
@@ -57,7 +50,7 @@ func main() {
 			}
 
 		case <-drvStop:
-			// Clear all button lamps.
+			// Clear all button lamps. Open for further implementation
 			for f := 0; f < numFloors; f++ {
 				for b := drivers.ButtonType(0); b < 3; b++ {
 					drivers.SetButtonLamp(b, f, false)
