@@ -13,6 +13,7 @@ import (
 	"time"
 )
 
+//Currently implemted as a var, migth be changed later to a more suitable format
 var masterStateStore = state.NewStore()
 
 func HandleMessage(msg message.Message, addr *net.UDPAddr) {
@@ -34,10 +35,9 @@ func HandleMessage(msg message.Message, addr *net.UDPAddr) {
 
 	case message.Heartbeat:
 		masterStateStore.UpdateHeartbeat(msg.ElevatorID)
-		//currentTime := time.Now().Format("15:04:05")
-		//fmt.Printf("Handler: Heartbeat from elevator %d at %s\n", msg.ElevatorID, currentTime)
+
 	default:
-		//fmt.Printf("Handler received message from %s: %+v\n", addr.String(), msg)
+		
 	}
 }
 
@@ -54,8 +54,6 @@ func StartHeartbeat(peerAddrs []string, elevatorID int) {
 		for _, addr := range peerAddrs {
 			if err := transport.SendMessage(hbMsg, addr); err != nil {
 				fmt.Printf("Error sending state message (seq %d) to %s: %v\n", seq, addr, err)
-			} else {
-				//fmt.Printf("Sent state message (seq: %d) to %s\n", seq, addr)
 			}
 		}
 		seq++
@@ -81,7 +79,7 @@ func StartStateSender(e *elevator.Elevator, peerAddrs []string) {
 				State:         status.State,
 				CurrentFloor:  status.CurrentFloor,
 				TargetFloor:   status.TargetFloor,
-				LastUpdated:   time.Now(),
+				LastUpdated:   status.LastUpdated,
 				RequestMatrix: status.RequestMatrix,
 			},
 		}
@@ -89,15 +87,13 @@ func StartStateSender(e *elevator.Elevator, peerAddrs []string) {
 		for _, addr := range peerAddrs {
 			if err := transport.SendMessage(stateMsg, addr); err != nil {
 				fmt.Printf("Error sending state message (seq %d) to %s: %v\n", seq, addr, err)
-			} else {
-				//fmt.Printf("Sent state message (seq: %d) to %s\n", seq, addr)
 			}
 		}
 		seq++
 	}
 }
 
-func PrintStateStore() {
+func DebugPrintStateStore() {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 

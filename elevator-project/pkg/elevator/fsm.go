@@ -29,13 +29,12 @@ const (
 	EventSetError
 )
 
-//used for internal elevator logic and handlig
 type Elevator struct {
 	ElevatorID	 	int
 	state        	ElevatorState
 	currentFloor 	int
 	targetFloor  	int
-	requestMatrix   *orders.RequestMatrix //should cahnge the variable name to requestMatrix
+	requestMatrix   *orders.RequestMatrix 
 	orders       	chan drivers.ButtonEvent
 	fsmEvents    	chan FsmEvent
 	doorTimer    	*time.Timer
@@ -168,10 +167,6 @@ func (e *Elevator) transitionTo(newState ElevatorState) {
 	}
 }
 
-// checkAndAssignOptimalOrder queries the request matrix for an optimal order.
-// If the elevator is idle, it clears the order immediately and processes it.
-// If the elevator is moving, it updates the target floor if the new order lies
-// between the current floor and the current target, but leaves the request intact.
 func (e *Elevator) checkAndAssignOptimalOrder() {
 	order, found := OptimalAssignment(e.requestMatrix, e.currentFloor, e.currentDirection())
 	if found {
@@ -229,20 +224,17 @@ func (e *Elevator) elevatorAtCorrectFloor() {
 	e.transitionTo(DoorOpen)
 }
 
-// GetStatus returns a state.ElevatorStatus with the current state of the elevator.
-// The LastUpdated field is set to time.Now() at the moment of calling this method.
 func (e *Elevator) GetStatus() state.ElevatorStatus {
-	// If requestMatrix is stored as a pointer internally, we can dereference it.
 	var reqMatrix orders.RequestMatrix
 	if e.requestMatrix != nil {
 		reqMatrix = *e.requestMatrix
 	}
 	return state.ElevatorStatus{
 		ElevatorID:    e.ElevatorID,
-		State:         int(e.state), //cant export state, look into this later
+		State:         int(e.state), 
 		CurrentFloor:  e.currentFloor,
 		TargetFloor:   e.targetFloor,
-		LastUpdated:   time.Now(), // or use a stored timestamp if you maintain one
+		LastUpdated:   time.Now(), 
 		RequestMatrix: reqMatrix,
 	}
 }

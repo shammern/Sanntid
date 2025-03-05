@@ -1,5 +1,6 @@
 package config
 
+//Might change these to JSON 
 var ElevatorAddresses = map[int]string{
 	1: "localhost:15555",
 	2: "localhost:15556",

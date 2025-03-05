@@ -6,6 +6,7 @@ import (
 	"math"
 )
 
+//Based on single elevator setup, not tuned to multiple elevator setup.
 func DynamicQueueManager(newOrders <-chan drivers.ButtonEvent, elevatorReady <-chan int, sendOrder chan<- drivers.ButtonEvent, numFloors int) {
 	rm := orders.NewRequestMatrix(numFloors)
 	for {

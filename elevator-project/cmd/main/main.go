@@ -26,7 +26,6 @@ func main() {
 	go transport.StartServer(config.UDPAddresses[*pelevatorID], app.HandleMessage)
 	go app.StartHeartbeat(peerAddrs, *pelevatorID)
 	go app.StartStateSender(elevatorFSM, peerAddrs)
-	go app.PrintStateStore()
 
 	app.RunEventLoop(elevatorFSM, requestMatrix)
 }

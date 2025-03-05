@@ -1,4 +1,3 @@
-// transport/client.go
 package transport
 
 import (
@@ -8,9 +7,6 @@ import (
 	"elevator-project/pkg/message"
 )
 
-// SendMessage sends a Message to the specified peer address.
-// For order messages, it performs a simple retransmission loop.
-// Heartbeat messages are sent once, as they are lightweight.
 func SendMessage(msg message.Message, peerAddr string) error {
 	addr, err := net.ResolveUDPAddr("udp", peerAddr)
 	if err != nil {
@@ -30,7 +26,8 @@ func SendMessage(msg message.Message, peerAddr string) error {
 
 	switch msg.Type {
 	case message.Order:
-		// For order messages, attempt multiple sends.
+		//Max retries will have to be tuned when testing with packetloss to find a suitable amount.
+		//Might also be implemented as a loop that breaks when an ack is received.
 		maxRetries := 3
 		for i := 0; i < maxRetries; i++ {
 			_, err = conn.Write(data)
@@ -39,11 +36,10 @@ func SendMessage(msg message.Message, peerAddr string) error {
 			} else {
 				fmt.Printf("Order message sent to %s, attempt %d\n", peerAddr, i+1)
 			}
-			// In a complete system, wait for an ACK before breaking out.
-			time.Sleep(100 * time.Millisecond)
+			
+			time.Sleep(10 * time.Millisecond)
 		}
 	default:
-		// For state updates and heartbeat messages, one send is sufficient.
 		_, err = conn.Write(data)
 		if err != nil {
 			return err

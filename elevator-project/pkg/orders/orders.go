@@ -65,9 +65,8 @@ func (rm *RequestMatrix) HasCabRequest(floor int) (bool, error) {
 	return rm.CabRequests[floor], nil
 }
 
-// DebugPrint outputs the current state of the request matrix.
 func (rm *RequestMatrix) DebugPrint() {
-	fmt.Println("==== Request Matrix ====")
+	fmt.Println("----------------------------Request Matrix----------------------------")
 	for floor, hall := range rm.HallRequests {
 		cabStr := "off"
 		if rm.CabRequests[floor] {
@@ -83,5 +82,5 @@ func (rm *RequestMatrix) DebugPrint() {
 		}
 		fmt.Printf("Floor %d: Cab: %s, Hall Up: %s, Hall Down: %s\n", floor, cabStr, hallUpStr, hallDownStr)
 	}
-	fmt.Println("========================")
+	fmt.Println("------------------------------------------------")
 }

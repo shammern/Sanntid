@@ -9,7 +9,7 @@ import (
 type ElevatorStatus struct {
 	ElevatorID    int
 	State         int
-	Direction     int //Should be changed to driver.MD?
+	Direction     int
 	CurrentFloor  int
 	TargetFloor   int
 	LastUpdated   time.Time

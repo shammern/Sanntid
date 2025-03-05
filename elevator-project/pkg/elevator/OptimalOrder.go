@@ -5,9 +5,7 @@ import (
 	"elevator-project/pkg/orders"
 )
 
-// OptimalAssignment evaluates all pending orders in the request matrix
-// and returns the order with the lowest cost. The cost function takes into
-// account the elevator's current floor and direction.
+//This function is for single elevator setup, multiple elevator handler is not yet fully implemented
 func OptimalAssignment(rm *orders.RequestMatrix, currentFloor int, currentDirection drivers.MotorDirection) (drivers.ButtonEvent, bool) {
 	var bestOrder drivers.ButtonEvent
 	bestCost := int(^uint(0) >> 1)
@@ -46,9 +44,7 @@ func OptimalAssignment(rm *orders.RequestMatrix, currentFloor int, currentDirect
 	return bestOrder, found
 }
 
-// computeCost calculates the "cost" to serve a request at requestFloor with the given button.
-// The base cost is the absolute distance. If the request is in the direction the elevator is moving,
-// no penalty is applied; otherwise, a high penalty is added.
+
 func computeCost(requestFloor int, requestButton drivers.ButtonType, currentFloor int, currentDirection drivers.MotorDirection) int {
 	baseCost := abs(currentFloor - requestFloor)
 	penalty := 1000
@@ -63,7 +59,7 @@ func computeCost(requestFloor int, requestButton drivers.ButtonType, currentFloo
 			return baseCost
 		}
 		return baseCost + penalty
-	default: // MD_Stop or unknown: no directional bias.
+	default: 
 		return baseCost
 	}
 }

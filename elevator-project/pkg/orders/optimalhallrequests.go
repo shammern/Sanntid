@@ -5,9 +5,9 @@ import (
 	"math"
 )
 
-const ( //given in the example code
-	travelTime   = 2500 //Example travel time in milliseconds
-	doorOpenTime = 3000 //Example door open time in milliseconds
+const (
+	travelTime   = 2500
+	doorOpenTime = 3000
 )
 
 type Dirn int
@@ -26,19 +26,19 @@ type Req struct {
 type State struct {
 	ID    string
 	State ElevatorState
-	Time  int64 //Assuming time as an int64 representation, last time the state was updated
+	Time  int64
 }
 
-// Shall be used by the master to ensure we dont assign the same req multiple times
+
 func isUnassigned(r Req) bool {
-	return r.Active && r.AssignedTo == "" //checks if request is active and not assign to any elevator
+	return r.Active && r.AssignedTo == ""
 }
 
-// check periodically?
+
 func anyUnassigned(reqs [][]Req) bool {
 	for _, floor := range reqs {
-		for _, r := range floor { //iterates thorugh the whole request matrix
-			if isUnassigned(r) { //unassigned?
+		for _, r := range floor {
+			if isUnassigned(r) {
 				return true
 			}
 		}
@@ -47,14 +47,14 @@ func anyUnassigned(reqs [][]Req) bool {
 }
 
 func clearRequestsAtFloor(e SimulatedElevator) SimulatedElevator {
-	e.RequestMat.CabRequests[e.Floor] = false //always clear cab requests
+	e.RequestMat.CabRequests[e.Floor] = false 
 
 	switch e.Direction {
 	case drivers.MD_Up:
-		e.RequestMat.HallRequests[e.Floor][0] = false //Clear only up button
+		e.RequestMat.HallRequests[e.Floor][0] = false 
 	case drivers.MD_Down:
-		e.RequestMat.HallRequests[e.Floor][1] = false //Clear only down button
-	case drivers.MD_Stop: //If idle, clear both
+		e.RequestMat.HallRequests[e.Floor][1] = false 
+	case drivers.MD_Stop:
 		e.RequestMat.HallRequests[e.Floor][0] = false
 		e.RequestMat.HallRequests[e.Floor][1] = false
 	}
@@ -63,22 +63,22 @@ func clearRequestsAtFloor(e SimulatedElevator) SimulatedElevator {
 }
 
 func requestsAbove(e ElevatorState) bool {
-	for i := e.Floor + 1; i < len(e.RequestMatrix.HallRequests); i++ { //Loop through all floors ABOVE the current one
-		for _, req := range e.RequestMatrix.HallRequests[i] { //Check hall requests (up/down buttons)
+	for i := e.Floor + 1; i < len(e.RequestMatrix.HallRequests); i++ {
+		for _, req := range e.RequestMatrix.HallRequests[i] {
 			if req {
-				return true //Found a request above, return true
+				return true
 			}
 		}
-		if e.RequestMatrix.CabRequests[i] { //Check if an inside cab request exists above
+		if e.RequestMatrix.CabRequests[i] {
 			return true
 		}
 	}
-	return false //No requests found above
+	return false 
 }
 
-// The same just for below
+
 func requestsBelow(e ElevatorState) bool {
-	for i := 0; i < e.Floor; i++ { //Loop through all floors BELOW the current one
+	for i := 0; i < e.Floor; i++ {
 		for _, req := range e.RequestMatrix.HallRequests[i] {
 			if req {
 				return true
@@ -91,21 +91,21 @@ func requestsBelow(e ElevatorState) bool {
 	return false
 }
 
-func anyRequestsAtFloor(e ElevatorState) bool { //Checck as current floor
-	for _, req := range e.RequestMatrix.HallRequests[e.Floor] { //Iterates through both up and down requests at floor
-		if req { //is active?
+func anyRequestsAtFloor(e ElevatorState) bool {
+	for _, req := range e.RequestMatrix.HallRequests[e.Floor] {
+		if req {
 			return true
 		}
 	}
-	return e.RequestMatrix.CabRequests[e.Floor] //If cab button pressed at this floor (inside elevator) -> return true, if not false
+	return e.RequestMatrix.CabRequests[e.Floor]
 }
 
 func shouldStop(e SimulatedElevator) bool {
 	switch e.Direction {
 	case drivers.MD_Up:
-		return e.RequestMat.HallRequests[e.Floor][0] || e.RequestMat.CabRequests[e.Floor] //if the elevator moves up, and there are a up request at this floor or cab
+		return e.RequestMat.HallRequests[e.Floor][0] || e.RequestMat.CabRequests[e.Floor]
 	case drivers.MD_Down:
-		return e.RequestMat.HallRequests[e.Floor][1] || e.RequestMat.CabRequests[e.Floor] // Same for down
+		return e.RequestMat.HallRequests[e.Floor][1] || e.RequestMat.CabRequests[e.Floor]
 	default:
 		return true
 	}
@@ -113,16 +113,15 @@ func shouldStop(e SimulatedElevator) bool {
 
 func chooseDirection(e ElevatorState) Dirn {
 	if requestsAbove(e) {
-		return 1 //Keep moving up
+		return 1
 	} else if anyRequestsAtFloor(e) {
-		return 0 //Stay at this floor (open doors)
+		return 0
 	} else if requestsBelow(e) {
-		return -1 //Move down
+		return -1
 	}
-	return 0 //No requests, stay idle
+	return 0
 }
 
-// Simulate an elevator for taking the time, to not fuck with our actual elevators
 type SimulatedElevator struct {
 	Floor      int
 	Direction  drivers.MotorDirection
@@ -130,49 +129,50 @@ type SimulatedElevator struct {
 }
 
 func CalculateTimeToIdle(e SimulatedElevator) int {
-	duration := 0 //time until elevator is in idle
+	duration := 0
 
 	switch e.Direction {
-	case drivers.MD_Stop: //if not moving, check if it should move
+	case drivers.MD_Stop:
 		e.Direction = drivers.MotorDirection(chooseDirection(ElevatorState{RequestMatrix: e.RequestMat, Floor: e.Floor, Direction: Dirn(e.Direction)}))
 		if e.Direction == drivers.MD_Stop {
-			return duration //no requets, still idle
+			return duration
 		}
 	case drivers.MD_Up, drivers.MD_Down:
-		duration += travelTime / 2  //assumes halfway to the next floor.
-		e.Floor += int(e.Direction) //increase or decrease floor number
+		duration += travelTime / 2
+		e.Floor += int(e.Direction)
 	}
 
 	for {
-		if shouldStop(e) { //if stops at floor
-			e = clearRequestsAtFloor(e) // Clear any fulfilled requests at this floor
-			duration += doorOpenTime    //Account for door open time
+		if shouldStop(e) {
+			e = clearRequestsAtFloor(e)
+			duration += doorOpenTime
 
 			e.Direction = drivers.MotorDirection(chooseDirection(ElevatorState{
 				RequestMatrix: e.RequestMat, Floor: e.Floor, Direction: Dirn(e.Direction),
 			}))
 			if e.Direction == drivers.MD_Stop {
-				return duration //if no more requests, return total time
+				return duration
 			}
 		}
-		e.Floor += int(e.Direction) // Move to the next floor
-		duration += travelTime      //Add the time it takes to travel one floor
+		e.Floor += int(e.Direction)
+		duration += travelTime
 	}
 }
 
+//Finds optimal elevator to handle a new order based on simulation of time it will take to complete the new order
 func AssignElevator(requestFloor int, requestButton drivers.ButtonType, elevators map[string]SimulatedElevator) string {
 	bestElevator := ""
-	bestTime := math.MaxInt32 //Start with an extremely high cost
+	bestTime := math.MaxInt32
 
-	for id, e := range elevators { //loop through all elevators
-		copyE := e                                                              //Simulate this elevator, copying
-		copyE.RequestMat.SetHallRequest(requestFloor, int(requestButton), true) //Add request temporarily
-		timeToIdle := CalculateTimeToIdle(copyE)                                //Estimate time to finish
+	for id, e := range elevators {
+		copyE := e                                                              
+		copyE.RequestMat.SetHallRequest(requestFloor, int(requestButton), true) 
+		timeToIdle := CalculateTimeToIdle(copyE)                               
 
-		if timeToIdle < bestTime { //picks the fastest elevator
+		if timeToIdle < bestTime {
 			bestTime = timeToIdle
-			bestElevator = id //alvays hold the id to the current best time
+			bestElevator = id
 		}
 	}
-	return bestElevator //Return the ID of the best elevator
+	return bestElevator
 }
