@@ -13,13 +13,18 @@ import (
 )
 
 var IsMaster bool = false
-var CurrentMasterID int = 1
-var masterStateStore = state.NewStore()
-var msgID int = 0
+var CurrentMasterID int = -1
+var BackupElevatorID int = -1
+var MasterStateStore = state.NewStore()
+var msgID int = 0          //HMMMM
 var Peers peers.PeerUpdate //to maintain elevators in network
 
 func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, msgTx chan message.Message, elevatorFSM *elevator.Elevator) {
 	for msg := range msgRx {
+		if msg.Type == message.Heartbeat {
+			MasterStateStore.UpdateHeartbeat(msg.ElevatorID)
+			continue
+		}
 		if msg.ElevatorID != config.ElevatorID {
 			switch msg.Type {
 			case message.Ack:
@@ -41,19 +46,27 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 				msgTx <- ackMsg
 				//elevatorFSM.RequestMatrix.SetHallRequest(msg.OrderData.Floor, int(msg.OrderData.Button), true)
 
+			case message.MasterQuery: //If the elevator that is running this code is the master, give an announcement to the other elevators
+				if IsMaster {
+					fmt.Printf("[INFO] Mottok MasterQuery. Jeg er master (heis %d), svarer...\n", CurrentMasterID)
+					responseMsg := message.Message{
+						Type:       message.MasterAnnouncement,
+						ElevatorID: CurrentMasterID,
+					}
+					msgTx <- responseMsg
+				}
+				continue
+
 			case message.CompletedOrder:
 				//TODO: Notify
-				masterStateStore.ClearHallLight(msg.OrderData.Floor, int(msg.OrderData.Button))
-				elevatorFSM.SetHallLigths(masterStateStore.GetElevatorLights(config.ElevatorID))
+				MasterStateStore.ClearHallLight(msg.OrderData.Floor, int(msg.OrderData.Button))
+				elevatorFSM.SetHallLigths(MasterStateStore.GetElevatorLights(config.ElevatorID))
 
 			case message.ButtonEvent:
 				//TODO: This has to be linked to the masterroutine that deligates orders
 				//Currentstate: updates statestore.Lights and light the appropriate hall lights. Cab buttons are handled internally
-				masterStateStore.SetHallLight(msg.OrderData.Floor, int(msg.OrderData.Button))
-				elevatorFSM.SetHallLigths(masterStateStore.GetElevatorLights(config.ElevatorID))
-
-			case message.Heartbeat:
-				masterStateStore.UpdateHeartbeat(msg.ElevatorID)
+				MasterStateStore.SetHallLight(msg.OrderData.Floor, int(msg.OrderData.Button))
+				elevatorFSM.SetHallLigths(MasterStateStore.GetElevatorLights(config.ElevatorID))
 
 			case message.State:
 				status := state.ElevatorStatus{
@@ -65,18 +78,12 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 					RequestMatrix: msg.StateData.RequestMatrix,
 					LastUpdated:   msg.StateData.LastUpdated,
 				}
-				masterStateStore.UpdateStatus(status)
+				MasterStateStore.UpdateStatus(status)
 
-			case message.MasterSlaveConfig:
-				// Update our view of the current master.
-				fmt.Printf("Received master config update: new master is elevator %d\n", msg.ElevatorID)
+			case message.MasterAnnouncement:
+				fmt.Printf("[INFO] Oppdaterer master til heis %d\n", msg.ElevatorID)
 				CurrentMasterID = msg.ElevatorID
-				if config.ElevatorID != msg.ElevatorID {
-					IsMaster = false
-				} else {
-					IsMaster = true
-				}
-
+				IsMaster = (config.ElevatorID == msg.ElevatorID)
 			default:
 				fmt.Printf("Received message: %#v\n", msg)
 			}
@@ -104,7 +111,7 @@ func StartWorldviewBC(e *elevator.Elevator, msgRx chan message.Message, counter 
 
 	for range ticker.C {
 		status := e.GetStatus()
-		masterStateStore.UpdateStatus(status)
+		MasterStateStore.UpdateStatus(status)
 		stateMsg := message.Message{
 			Type:       message.State,
 			ElevatorID: status.ElevatorID,
@@ -128,7 +135,7 @@ func DebugPrintStateStore() {
 	defer ticker.Stop()
 	for range ticker.C {
 		fmt.Println("----- Current Elevator States -----")
-		statuses := masterStateStore.GetAll()
+		statuses := MasterStateStore.GetAll()
 		for id, status := range statuses {
 			fmt.Printf("Elevator %d:\n", id)
 			fmt.Printf("  ElevatorID   : %d\n", status.ElevatorID)
@@ -226,8 +233,8 @@ func StartMasterProcess(peerAddrs []string, elevatorFSM *elevator.Elevator, msgT
 	*/
 }
 
-func P2Pmonitor() {
-	//This function can be used to trigger events if units exit or enter the network
+// This function can be used to trigger events if units exit or enter the network
+func P2Pmonitor(msgTx chan message.Message) {
 	peerUpdateCh := make(chan peers.PeerUpdate)
 	peerTxEnable := make(chan bool)
 	go peers.Transmitter(config.P2Pport, strconv.Itoa(config.ElevatorID), peerTxEnable)
@@ -239,5 +246,14 @@ func P2Pmonitor() {
 		fmt.Printf("  Peers:    %q\n", update.Peers)
 		fmt.Printf("  New:      %q\n", update.New)
 		fmt.Printf("  Lost:     %q\n", update.Lost)
+		if len(update.New) > 0 {
+			fmt.Printf("[INFO] Ny heis oppdaget: %q. Spør etter master...\n", update.New)
+
+			queryMsg := message.Message{
+				Type:       message.MasterQuery,
+				ElevatorID: 0, //Asking for the master
+			}
+			msgTx <- queryMsg
+		}
 	}
 }

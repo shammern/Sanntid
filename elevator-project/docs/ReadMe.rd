@@ -6,10 +6,12 @@ step 1:
     simelevatorserver --port 15556
     simelevatorserver --port 15557
 
+    ./SimElevatorServer --port 15555
+
 step 2: 
     -Run go mains
     -CD to projectfile/cmd/main
-    go run main.go --ID=1
-    go run main.go --ID=2
-    go run main.go --ID=3
+    go run main.go --id=1
+    go run main.go --id=2
+    go run main.go --id=3
 

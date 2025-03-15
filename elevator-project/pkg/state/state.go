@@ -28,29 +28,7 @@ type Store struct {
 
 // NewStore creates a new Store.
 func NewStore() *Store {
-	store := &Store{
-		elevators: make(map[int]ElevatorStatus),
-	}
-
-	for id := 1; id <= 3; id++ {
-		// Initialize the Lights matrix for each elevator.
-		lights := make([][]bool, config.NumFloors)
-		for f := 0; f < config.NumFloors; f++ {
-			lights[f] = make([]bool, 2)
-		}
-
-		// Create the ElevatorStatus instance.
-		status := ElevatorStatus{
-			ElevatorID:  id,
-			LastUpdated: time.Now(),
-			Lights:      lights,
-		}
-
-		// Insert the elevator into the store.
-		store.elevators[id] = status
-	}
-
-	return store
+	return &Store{elevators: make(map[int]ElevatorStatus)}
 }
 
 // NewElevatorStatus is a helper to initialize an ElevatorStatus with properly allocated Lights.

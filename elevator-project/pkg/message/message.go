@@ -16,8 +16,8 @@ const (
 	CompletedOrder
 	Ack
 	Heartbeat
-	MasterSlaveConfig // ???
-	Promotion         // Promotion msg letting other elevators know that a new elevator is master?
+	MasterAnnouncement // Ny meldingstype for å annonsere hvem som er master
+	MasterQuery        // Melding for å spørre "Hvem er master?"
 )
 
 type ElevatorState struct {
