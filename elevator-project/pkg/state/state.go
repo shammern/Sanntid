@@ -77,6 +77,7 @@ func (s *Store) GetAll() map[int]ElevatorStatus {
 
 // SetHallLight sets the request for a specific floor and button for the current elevator.
 func (s *Store) SetHallRequest(button drivers.ButtonEvent) error {
+	//TODO: Add fault check if trying to set a cab button
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -85,6 +86,22 @@ func (s *Store) SetHallRequest(button drivers.ButtonEvent) error {
 	}
 
 	s.HallRequests[button.Floor][int(button.Button)] = true
+
+	return nil
+}
+
+// SetHallLight clears the request for a specific floor and button for the current elevator.
+func (s *Store) ClearHallRequest(button drivers.ButtonEvent) error {
+	//TODO: Add fault check if trying to set a cab button
+	s.mu.Lock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if button.Floor < 0 || button.Floor >= len(s.HallRequests) {
+		return fmt.Errorf("floor index %d out of bounds", button.Floor)
+	}
+
+	s.HallRequests[button.Floor][int(button.Button)] = false
 
 	return nil
 }
@@ -115,8 +132,15 @@ func (s *Store) ClearOrder(button drivers.ButtonEvent, elevatorID int) error {
 }
 
 // GetElevatorLights returns the Lights matrix for the given elevator ID.
-func (s *Store) GetHallOrders(elevatorID int) [][2]bool {
+func (s *Store) GetHallOrders() [][2]bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.HallRequests
+}
+
+// SetHallLight sets the request for a specific floor and button for the current elevator.
+func (s *Store) SetAllHallRequest(matrix [][2]bool){
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.HallRequests = matrix
 }

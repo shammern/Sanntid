@@ -241,9 +241,15 @@ func (e *Elevator) GetRequestMatrix() *orders.RequestMatrix {
 }
 
 func (e *Elevator) SetHallLigths(matrix [][2]bool) {
+	if len(matrix) == 0 {
+		fmt.Println("Error: matrix is empty!")
+		return
+	}
+
 	for i := 0; i < config.NumFloors-1; i++ {
 		drivers.SetButtonLamp(drivers.BT_HallUp, i, matrix[i][0])
 	}
+	
 	for i := 1; i < config.NumFloors; i++ {
 		drivers.SetButtonLamp(drivers.BT_HallDown, i, matrix[i][1])
 	}

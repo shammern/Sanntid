@@ -21,6 +21,7 @@ var Peers peers.PeerUpdate //to maintain elevators in network
 
 func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, msgTx chan message.Message, elevatorFSM *elevator.Elevator) {
 	for msg := range msgRx {
+		fmt.Println("Message received")
 		//if msg.ElevatorID != config.ElevatorID {
 		switch msg.Type {
 		case message.Ack:
@@ -44,6 +45,9 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 				elevatorFSM.Orders <- event
 			}
 
+			masterStateStore.SetAllHallRequest(msg.HallRequests)
+			elevatorFSM.SetHallLigths(masterStateStore.HallRequests)
+
 			//TODO: Handle new order, add to internal request matrix and send ACK back to master
 			//fmt.Printf("Received Order: %#v, sending ACK...\n", msg)
 			ackMsg := message.Message{
@@ -54,19 +58,23 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 			}
 
 			msgTx <- ackMsg
-			elevatorFSM.SetHallLigths(masterStateStore.HallRequests)
 
 		case message.CompletedOrder:
 			//TODO: Notify
 			fmt.Printf("Order has been completed: Floor: %d, ButtonType: %d\n", msg.ButtonEvent.Floor, int(msg.ButtonEvent.Button))
 			masterStateStore.ClearOrder(msg.ButtonEvent, msg.ElevatorID)
-			//elevatorFSM.SetHallLigths(masterStateStore.GetHallOrders(config.ElevatorID))
+			masterStateStore.ClearHallRequest(msg.ButtonEvent)
+			masterStateStore.SetAllHallRequest(msg.HallRequests)
 			elevatorFSM.SetHallLigths(masterStateStore.HallRequests)
 
 		case message.ButtonEvent:
-
+			fmt.Println("New button event has been received")
 			if IsMaster {
+				
+				//SetHallRequest should maybe be moved to a later stage after an ack has been received.
+				//masterStateStore.SetHallRequest(msg.ButtonEvent)
 				if msg.ButtonEvent.Button != drivers.BT_Cab {
+					fmt.Println("Master has received new order")
 					masterStateStore.SetHallRequest(msg.ButtonEvent)
 					newOrder, _ := HRA.HRARun(masterStateStore)
 					orderMsg := message.Message{
@@ -96,6 +104,8 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 				LastUpdated:     msg.StateData.LastUpdated,
 			}
 			masterStateStore.UpdateStatus(status)
+			//masterStateStore.HallRequests = msg.HallRequests
+			//elevatorFSM.SetHallLigths(masterStateStore.HallRequests)
 
 		case message.MasterSlaveConfig:
 			// Update our view of the current master.
@@ -138,6 +148,7 @@ func StartWorldviewBC(e *elevator.Elevator, msgTx chan message.Message, counter 
 			Type:       message.State,
 			ElevatorID: status.ElevatorID,
 			MsgID:      counter.Next(),
+			HallRequests: masterStateStore.HallRequests,
 			StateData: &message.ElevatorState{
 				ElevatorID:      status.ElevatorID,
 				State:           status.State,
@@ -196,6 +207,7 @@ func MonitorSystemInputs(elevatorFSM *elevator.Elevator, msgTx chan message.Mess
 				ButtonEvent: be,
 			}
 
+			fmt.Println("Sending order on network")
 			msgTx <- buttonEventMsg
 
 			//If internal event(cab button) add order directly to request matrix

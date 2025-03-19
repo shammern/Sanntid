@@ -36,7 +36,8 @@ type Message struct {
 	MsgID       int
 	StateData   *ElevatorState //Why is this a pointer?
 	ButtonEvent drivers.ButtonEvent
-	OrderData   map[string][][2]bool //Hall request
+	OrderData   map[string][][2]bool //Hallorders for individual elevators
+	HallRequests [][2]bool			 // All active hallorders aka the halllights
 	AckID       int                  //AckID = msgID for the corresponding message requiring an ack
 }
 

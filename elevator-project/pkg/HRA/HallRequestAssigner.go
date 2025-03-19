@@ -64,7 +64,7 @@ func HRARun(st *state.Store) (map[string][][2]bool, error) {
 	if err != nil {
 		return nil, fmt.Errorf("exec.Command error: %v, output: %s", err, ret)
 	}
-
+	
 	output := make(map[string][][2]bool)
 	err = json.Unmarshal(ret, &output)
 	if err != nil {

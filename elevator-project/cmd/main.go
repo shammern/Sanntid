@@ -9,6 +9,7 @@ import (
 	"elevator-project/pkg/message"
 	"elevator-project/pkg/network/bcast"
 	"flag"
+	"fmt"
 )
 
 func main() {
@@ -35,6 +36,7 @@ func main() {
 
 	if config.ElevatorID == 1 {
 		app.IsMaster = true
+		fmt.Println("Elevator initated as master")
 	}
 
 	select {}
