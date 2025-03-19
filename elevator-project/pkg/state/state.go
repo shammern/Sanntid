@@ -94,11 +94,14 @@ func (s *Store) SetHallRequest(button drivers.ButtonEvent) error {
 func (s *Store) ClearHallRequest(button drivers.ButtonEvent) error {
 	//TODO: Add fault check if trying to set a cab button
 	s.mu.Lock()
-	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if button.Floor < 0 || button.Floor >= len(s.HallRequests) {
 		return fmt.Errorf("floor index %d out of bounds", button.Floor)
+	}
+
+	if button.Button == drivers.BT_Cab {
+		return nil
 	}
 
 	s.HallRequests[button.Floor][int(button.Button)] = false

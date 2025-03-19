@@ -5,6 +5,7 @@ step 1:
     simelevatorserver --port 15555
     simelevatorserver --port 15556
     simelevatorserver --port 15557
+    chmod a+rwx hall_request_assigner
 
 step 2: 
     -Run go mains

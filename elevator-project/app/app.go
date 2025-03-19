@@ -21,13 +21,12 @@ var Peers peers.PeerUpdate //to maintain elevators in network
 
 func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, msgTx chan message.Message, elevatorFSM *elevator.Elevator) {
 	for msg := range msgRx {
-		fmt.Println("Message received")
 		//if msg.ElevatorID != config.ElevatorID {
 		switch msg.Type {
 		case message.Ack:
 			//TODO: check if ack is on correct msg
 			if msg.AckID == msgID.Get() {
-				fmt.Printf("Received ACK: %#v\n", msg)
+				fmt.Printf("[MH] Received ACK: %#v\n", msg)
 				ackChan <- msg
 			}
 
@@ -35,13 +34,14 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 			orderData := msg.OrderData
 
 			myOrderData := orderData[strconv.Itoa(config.ElevatorID)]
-			fmt.Println("My new hallorder are: ")
+			fmt.Println("[MH] My new hallorders are: ")
 			for floor, arr := range myOrderData {
 				fmt.Printf("  Floor %d: Up: %t, Down: %t\n", floor, arr[0], arr[1])
 			}
 
-			events := convertOrderDataToButtonEvents(orderData)
+			events := convertOrderDataToOrders(orderData)
 			for _, event := range events {
+				//fmt.Printf("[MH] Sending order to FSM: floor: %d, button: %d\n", event.Floor, int(event.Button))
 				elevatorFSM.Orders <- event
 			}
 
@@ -49,7 +49,7 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 			elevatorFSM.SetHallLigths(masterStateStore.HallRequests)
 
 			//TODO: Handle new order, add to internal request matrix and send ACK back to master
-			//fmt.Printf("Received Order: %#v, sending ACK...\n", msg)
+			
 			ackMsg := message.Message{
 				Type:       message.Ack,
 				ElevatorID: config.ElevatorID,
@@ -61,20 +61,18 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 
 		case message.CompletedOrder:
 			//TODO: Notify
-			fmt.Printf("Order has been completed: Floor: %d, ButtonType: %d\n", msg.ButtonEvent.Floor, int(msg.ButtonEvent.Button))
+			fmt.Printf("[MH] Order has been completed: Floor: %d, ButtonType: %d\n", msg.ButtonEvent.Floor, int(msg.ButtonEvent.Button))
 			masterStateStore.ClearOrder(msg.ButtonEvent, msg.ElevatorID)
 			masterStateStore.ClearHallRequest(msg.ButtonEvent)
-			masterStateStore.SetAllHallRequest(msg.HallRequests)
 			elevatorFSM.SetHallLigths(masterStateStore.HallRequests)
 
 		case message.ButtonEvent:
-			fmt.Println("New button event has been received")
+			
 			if IsMaster {
 				
 				//SetHallRequest should maybe be moved to a later stage after an ack has been received.
 				//masterStateStore.SetHallRequest(msg.ButtonEvent)
 				if msg.ButtonEvent.Button != drivers.BT_Cab {
-					fmt.Println("Master has received new order")
 					masterStateStore.SetHallRequest(msg.ButtonEvent)
 					newOrder, _ := HRA.HRARun(masterStateStore)
 					orderMsg := message.Message{
@@ -83,6 +81,7 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 						MsgID:      msgID.Next(),
 						AckID:      msg.MsgID,
 						OrderData:  newOrder,
+						HallRequests: masterStateStore.HallRequests,
 					}
 
 					msgTx <- orderMsg
@@ -109,7 +108,7 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 
 		case message.MasterSlaveConfig:
 			// Update our view of the current master.
-			fmt.Printf("Received master config update: new master is elevator %d\n", msg.ElevatorID)
+			fmt.Printf("[MH] Received master config update: new master is elevator %d\n", msg.ElevatorID)
 			CurrentMasterID = msg.ElevatorID
 			if config.ElevatorID != msg.ElevatorID {
 				IsMaster = false
@@ -207,12 +206,11 @@ func MonitorSystemInputs(elevatorFSM *elevator.Elevator, msgTx chan message.Mess
 				ButtonEvent: be,
 			}
 
-			fmt.Println("Sending order on network")
 			msgTx <- buttonEventMsg
 
 			//If internal event(cab button) add order directly to request matrix
 			if be.Button == drivers.BT_Cab {
-				elevatorFSM.Orders <- be
+				elevatorFSM.Orders <- elevator.Order{be, true}
 				drivers.SetButtonLamp(drivers.BT_Cab, be.Floor, true)
 			}
 

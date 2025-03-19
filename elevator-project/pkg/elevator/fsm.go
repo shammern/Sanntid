@@ -39,6 +39,11 @@ const (
 	Stop           = 0
 )
 
+type Order struct {
+	Event drivers.ButtonEvent
+	Flag bool
+}
+
 // used for internal elevator logic and handlig
 type Elevator struct {
 	ElevatorID      int
@@ -46,7 +51,7 @@ type Elevator struct {
 	currentFloor    int
 	travelDirection Direction
 	RequestMatrix   *orders.RequestMatrix //should change the variable name to requestMatrix
-	Orders          chan drivers.ButtonEvent
+	Orders          chan Order
 	fsmEvents       chan FsmEvent
 	doorTimer       *time.Timer
 	msgTx           chan message.Message
@@ -79,7 +84,7 @@ func NewElevator(ElevatorID int, msgTx chan message.Message, counter *message.Ms
 		state:           Idle,
 		currentFloor:    validFloor,
 		RequestMatrix:   orders.NewRequestMatrix(config.NumFloors),
-		Orders:          make(chan drivers.ButtonEvent, 10),
+		Orders:          make(chan Order, 10),
 		fsmEvents:       make(chan FsmEvent, 10),
 		msgTx:           msgTx,
 		counter:         counter,
@@ -122,30 +127,34 @@ func (e *Elevator) Run() {
 	}
 }
 
-func (e *Elevator) handleNewOrder(order drivers.ButtonEvent) {
-	fmt.Printf("New order received type: %d, floor: %d\n", int(order.Button), order.Floor)
 
-	switch order.Button {
+//TODO: It might be cleaner if handleNewOrder receives a whole requestMatrix rather than multiple orders.
+func (e *Elevator) handleNewOrder(newOrder Order) {
+	//fmt.Printf("[ElevatorFSM] New order received type: %d, floor: %d\n", int(order.Button), order.Floor)
+
+	switch newOrder.Event.Button {
 	case drivers.BT_Cab:
-		e.RequestMatrix.CabRequests[order.Floor] = true
+		e.RequestMatrix.CabRequests[newOrder.Event.Floor] = newOrder.Flag
 
 	case drivers.BT_HallUp:
-		e.RequestMatrix.HallRequests[order.Floor][0] = true
+		e.RequestMatrix.HallRequests[newOrder.Event.Floor][0] = newOrder.Flag
 
 	case drivers.BT_HallDown:
-		e.RequestMatrix.HallRequests[order.Floor][1] = true
+		e.RequestMatrix.HallRequests[newOrder.Event.Floor][1] = newOrder.Flag
 	}
 
-	if order.Floor == e.currentFloor && e.state == Idle ||
-		order.Floor == e.currentFloor && e.state == DoorOpen ||
-		order.Floor == e.currentFloor && e.state == DoorObstructed {
-		fmt.Printf("Received order on same floor. Ordertype: %d, floor: %d\n", int(order.Button), order.Floor)
+	if newOrder.Flag {
+		if newOrder.Event.Floor == e.currentFloor && e.state == Idle ||
+		newOrder.Event.Floor == e.currentFloor && e.state == DoorOpen ||
+		newOrder.Event.Floor == e.currentFloor && e.state == DoorObstructed {
+		fmt.Printf("[ElevatorFSM] Received order on same floor. Ordertype: %d, floor: %d\n", int(newOrder.Event.Button), newOrder.Event.Floor)
 		//drivers.SetButtonLamp(order.Button, order.Floor, false)
 		e.clearHallReqsAtFloor()
 		drivers.SetDoorOpenLamp(true)
 		e.transitionTo(DoorOpen)
 		return
 	}
+}
 }
 
 func (e *Elevator) handleFSMEvent(ev FsmEvent) {

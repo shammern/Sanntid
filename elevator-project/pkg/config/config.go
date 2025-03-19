@@ -24,5 +24,5 @@ var NumFloors = 4
 var ElevatorID = 0
 var HeartBeatInterval = 100 * time.Millisecond
 var WorldviewBCInterval = 100 * time.Millisecond
-var BCport = 15000
+var BCport = 15500
 var P2Pport = 16000
