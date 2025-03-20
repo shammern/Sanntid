@@ -7,31 +7,34 @@ import (
 	"strconv"
 )
 
+//Takes a ordermap and extract the orders for the currentelevator. Orders are packed into a list and returned. 
 func convertOrderDataToOrders(orderData map[string][][2]bool) []elevator.Order {
 	var ordersList []elevator.Order
 	orders := orderData[strconv.Itoa(config.ElevatorID)]
 
 	for floor, calls := range orders {
-		if calls[0] { // Hall up call
+		// Hall up call
+		if calls[0] { 
 			ordersList = append(ordersList, elevator.Order{
 				Event: drivers.ButtonEvent{Floor: floor, Button: drivers.BT_HallUp},
-				Flag:  true, // Default flag value, modify if needed
+				Flag:  true, 
 			})
 		} else {
 			ordersList = append(ordersList, elevator.Order{
 				Event: drivers.ButtonEvent{Floor: floor, Button: drivers.BT_HallUp},
-				Flag:  false, // Default flag value, modify if needed
+				Flag:  false, 
 			})
 		}
-		if calls[1] { // Hall down call
+		// Hall down call
+		if calls[1] { 
 			ordersList = append(ordersList, elevator.Order{
 				Event: drivers.ButtonEvent{Floor: floor, Button: drivers.BT_HallDown},
-				Flag:  true, // Default flag value, modify if needed
+				Flag:  true, 
 			})
 		} else {
 			ordersList = append(ordersList, elevator.Order{
 			Event: drivers.ButtonEvent{Floor: floor, Button: drivers.BT_HallDown},
-			Flag:  false, // Default flag value, modify if needed
+			Flag:  false, 
 		})
 	}
 	}

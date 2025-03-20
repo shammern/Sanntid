@@ -26,14 +26,15 @@ func main() {
 	go bcast.Transmitter(config.BCport, msgTx)
 	go bcast.Receiver(config.BCport, msgRx)
 
-	elevator := elevator.NewElevator(config.ElevatorID, msgTx, &msgIDcounter)
+	elevator := elevator.NewElevator(config.ElevatorID, msgTx, &msgIDcounter, ackChan)
 	go app.MessageHandler(msgRx, ackChan, msgTx, elevator)
-	go app.StartHeartbeatBC(msgTx)
+	//go app.StartHeartbeatBC(msgTx)
 	go elevator.Run()
-	go app.MonitorSystemInputs(elevator, msgTx)
+	go app.MonitorSystemInputs(elevator)
 	go app.P2Pmonitor()
-	go app.StartWorldviewBC(elevator, msgTx, &msgIDcounter)
+	//go app.StartWorldviewBC(elevator, msgTx, &msgIDcounter)
 
+	//TODO: implement this in a better way, where it ask the network whos the main, and alternativly promotes itself. 
 	if config.ElevatorID == 1 {
 		app.IsMaster = true
 		fmt.Println("Elevator initated as master")

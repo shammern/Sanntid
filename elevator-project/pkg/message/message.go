@@ -1,8 +1,8 @@
 package message
 
 import (
+	RM "elevator-project/pkg/RequestMatrix"
 	"elevator-project/pkg/drivers"
-	"elevator-project/pkg/orders"
 	"sync"
 	"time"
 )
@@ -27,7 +27,7 @@ type ElevatorState struct {
 	CurrentFloor    int
 	TravelDirection int
 	LastUpdated     time.Time
-	RequestMatrix   orders.RequestMatrix
+	RequestMatrix   RM.RequestMatrix
 }
 
 type Message struct {
@@ -39,6 +39,10 @@ type Message struct {
 	OrderData   map[string][][2]bool //Hallorders for individual elevators
 	HallRequests [][2]bool			 // All active hallorders aka the halllights
 	AckID       int                  //AckID = msgID for the corresponding message requiring an ack
+}
+
+type AckStatus struct {
+	
 }
 
 type MsgID struct {

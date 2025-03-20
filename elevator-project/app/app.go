@@ -8,6 +8,7 @@ import (
 	"elevator-project/pkg/message"
 	"elevator-project/pkg/network/peers"
 	"elevator-project/pkg/state"
+	"elevator-project/pkg/utils"
 	"fmt"
 	"strconv"
 	"time"
@@ -20,72 +21,60 @@ var msgID = &message.MsgID{}
 var Peers peers.PeerUpdate //to maintain elevators in network
 
 func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, msgTx chan message.Message, elevatorFSM *elevator.Elevator) {
-	for msg := range msgRx {
-		//if msg.ElevatorID != config.ElevatorID {
+	for msg := range msgRx { 
+		if msg.ElevatorID != config.ElevatorID {
+		
 		switch msg.Type {
 		case message.Ack:
+			fmt.Printf("[MH] Received an ACK\n")
 			//TODO: check if ack is on correct msg
 			if msg.AckID == msgID.Get() {
-				fmt.Printf("[MH] Received ACK: %#v\n", msg)
+				fmt.Printf("[MH] Received correct ACK\n")
 				ackChan <- msg
 			}
 
 		case message.OrderDelegation:
 			orderData := msg.OrderData
 
-			myOrderData := orderData[strconv.Itoa(config.ElevatorID)]
-			fmt.Println("[MH] My new hallorders are: ")
-			for floor, arr := range myOrderData {
-				fmt.Printf("  Floor %d: Up: %t, Down: %t\n", floor, arr[0], arr[1])
-			}
-
+			fmt.Println("[MH] New orders received, sending to elevator")
+			
 			events := convertOrderDataToOrders(orderData)
 			for _, event := range events {
-				//fmt.Printf("[MH] Sending order to FSM: floor: %d, button: %d\n", event.Floor, int(event.Button))
 				elevatorFSM.Orders <- event
 			}
 
 			masterStateStore.SetAllHallRequest(msg.HallRequests)
 			elevatorFSM.SetHallLigths(masterStateStore.HallRequests)
-
-			//TODO: Handle new order, add to internal request matrix and send ACK back to master
 			
-			ackMsg := message.Message{
-				Type:       message.Ack,
-				ElevatorID: config.ElevatorID,
-				MsgID:      msgID.Get(),
-				AckID:      msg.MsgID,
-			}
-
-			msgTx <- ackMsg
+			SendAck(msg, msgTx)
 
 		case message.CompletedOrder:
 			//TODO: Notify
-			fmt.Printf("[MH] Order has been completed: Floor: %d, ButtonType: %d\n", msg.ButtonEvent.Floor, int(msg.ButtonEvent.Button))
+			fmt.Printf("[MH] Order has been completed: Floor: %d, ButtonType: %s\n", msg.ButtonEvent.Floor, utils.ButtonTypeToString(msg.ButtonEvent.Button))
 			masterStateStore.ClearOrder(msg.ButtonEvent, msg.ElevatorID)
 			masterStateStore.ClearHallRequest(msg.ButtonEvent)
 			elevatorFSM.SetHallLigths(masterStateStore.HallRequests)
+			SendAck(msg, msgTx)
 
 		case message.ButtonEvent:
 			
 			if IsMaster {
-				
-				//SetHallRequest should maybe be moved to a later stage after an ack has been received.
-				//masterStateStore.SetHallRequest(msg.ButtonEvent)
+
+				//Only want to assign hallorders -> ignore if buttonevent is of type cab.
 				if msg.ButtonEvent.Button != drivers.BT_Cab {
 					masterStateStore.SetHallRequest(msg.ButtonEvent)
 					newOrder, _ := HRA.HRARun(masterStateStore)
-					orderMsg := message.Message{
-						Type:       message.OrderDelegation,
-						ElevatorID: config.ElevatorID,
-						MsgID:      msgID.Next(),
-						AckID:      msg.MsgID,
-						OrderData:  newOrder,
-						HallRequests: masterStateStore.HallRequests,
-					}
+					go SendOrder(newOrder, msgTx, ackChan)
+					//TODO: Add to own RM
 
-					msgTx <- orderMsg
+					
+					events := convertOrderDataToOrders(newOrder)
+					for _, event := range events {
+						elevatorFSM.Orders <- event
+					}
 				}
+				
+				SendAck(msg, msgTx)
 
 			}
 
@@ -103,8 +92,6 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 				LastUpdated:     msg.StateData.LastUpdated,
 			}
 			masterStateStore.UpdateStatus(status)
-			//masterStateStore.HallRequests = msg.HallRequests
-			//elevatorFSM.SetHallLigths(masterStateStore.HallRequests)
 
 		case message.MasterSlaveConfig:
 			// Update our view of the current master.
@@ -117,10 +104,10 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 			}
 
 		default:
-			fmt.Printf("Received message: %#v\n", msg)
+			fmt.Printf("Received undefined message")
 		}
 	}
-	//}
+	}
 }
 
 func StartHeartbeatBC(msgTx chan message.Message) {
@@ -184,7 +171,7 @@ func DebugPrintStateStore() {
 	}
 }
 
-func MonitorSystemInputs(elevatorFSM *elevator.Elevator, msgTx chan message.Message) {
+func MonitorSystemInputs(elevatorFSM *elevator.Elevator) {
 	drvButtons := make(chan drivers.ButtonEvent)
 	drvFloors := make(chan int)
 	drvObstr := make(chan bool)
@@ -198,15 +185,7 @@ func MonitorSystemInputs(elevatorFSM *elevator.Elevator, msgTx chan message.Mess
 	for {
 		select {
 		case be := <-drvButtons:
-			//BC buttonevent on network
-			buttonEventMsg := message.Message{
-				Type:        message.ButtonEvent,
-				ElevatorID:  config.ElevatorID,
-				MsgID:       msgID.Next(),
-				ButtonEvent: be,
-			}
-
-			msgTx <- buttonEventMsg
+			elevatorFSM.NotifyMaster(message.ButtonEvent, be)
 
 			//If internal event(cab button) add order directly to request matrix
 			if be.Button == drivers.BT_Cab {
@@ -230,40 +209,6 @@ func MonitorSystemInputs(elevatorFSM *elevator.Elevator, msgTx chan message.Mess
 	}
 }
 
-// TODO: Fix this function
-func StartMasterProcess(peerAddrs []string, elevatorFSM *elevator.Elevator, msgTx chan message.Message) {
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
-	/*
-		for range ticker.C {
-			if elevatorFSM.ElevatorID == 1 { // Master elevator check
-				fmt.Println("[Master] Checking for unassigned orders...")
-
-				unassignedOrders := orders.GetUnassignedOrders(elevatorFSM.GetRequestMatrix())
-				fmt.Println("[Master] Unassigned Orders:", unassignedOrders)
-
-				for _, order := range unassignedOrders {
-					assignedElevator := orders.FindBestElevator(order, peerAddrs)
-					fmt.Printf("[Master] Assigning order: Floor %d to Elevator %s\n", order.Floor, assignedElevator)
-
-
-					if assignedElevator != "" {
-						orderMsg := message.Message{
-							Type:       message.OrderDelegation,
-							ElevatorID: status.ElevatorID,
-							MsgID:      msgID,
-							OrderData: {},
-							},
-						msgTx <-
-						transport.SendOrderToElevator(order, assignedElevator)
-					}
-				}
-			}
-		}
-
-	*/
-}
-
 func P2Pmonitor() {
 	//This function can be used to trigger events if units exit or enter the network
 	peerUpdateCh := make(chan peers.PeerUpdate)
@@ -279,3 +224,97 @@ func P2Pmonitor() {
 		fmt.Printf("  Lost:     %q\n", update.Lost)
 	}
 }
+
+func SendAck(msg message.Message, msgTx chan message.Message) {
+	fmt.Printf("[MH] Message received: type: %s, msgID: %d, sending ack\n", utils.MessageTypeToString(msg.Type), msg.MsgID)
+
+	ackMsg := message.Message{
+		Type:       message.Ack,
+		ElevatorID: config.ElevatorID,
+		//MsgID:      msgID.Get(),
+		AckID:      msg.MsgID,
+	}
+
+	msgTx <- ackMsg
+}
+
+/*
+func SendOrder(newOrder map[string][][2]bool, msgTx chan message.Message, ackChan chan message.Message){
+	orderMsg := message.Message{
+		Type:       message.OrderDelegation,
+		ElevatorID: config.ElevatorID,
+		MsgID:      msgID.Next(),
+		OrderData:  newOrder,
+		HallRequests: masterStateStore.HallRequests,
+	}
+
+
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		// If an acknowledgement is received, break out of the loop.
+		//TODO: Master need to keep track of which of the online elevators has sent an ack msg and break of of loop when all active elevators has sent an ack. 
+		case <- ackChan:
+			return
+	
+		// Otherwise, on each tick, send the message.
+		case <-ticker.C:
+			fmt.Printf("[MH: Master] Sending new orders.\n")
+			msgTx <- orderMsg
+		}
+	}
+}
+*/
+
+func SendOrder(newOrder map[string][][2]bool, msgTx chan message.Message, ackChan chan message.Message, expectedPeers []int) {
+	orderMsg := message.Message{
+		Type:         message.OrderDelegation,
+		ElevatorID:   config.ElevatorID,
+		MsgID:        msgID.Next(),
+		OrderData:    newOrder,
+		HallRequests: masterStateStore.HallRequests,
+	}
+
+	// Build a map to track ack status for each expected peer.
+	ackReceived := make(map[int]bool)
+	for _, peerID := range expectedPeers {
+		ackReceived[peerID] = false
+	}
+
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		// Check if all expected peers have acknowledged.
+		allAcked := true
+		for _, ack := range ackReceived {
+			if !ack {
+				allAcked = false
+				break
+			}
+		}
+		if allAcked {
+			fmt.Println("[MH: Master] All acknowledgements received.")
+			return
+		}
+
+		select {
+		// Process incoming ack messages.
+		case ackMsg := <-ackChan:
+			// Use ackMsg.ElevatorID (an int) to identify which peer sent the ack.
+			if _, exists := ackReceived[ackMsg.ElevatorID]; exists {
+				ackReceived[ackMsg.ElevatorID] = true
+				fmt.Printf("[MH: Master] Ack received from elevator: %d\n", ackMsg.ElevatorID)
+			} else {
+				fmt.Printf("[MH: Master] Received ack from unknown elevator: %d\n", ackMsg.ElevatorID)
+			}
+		// On each tick, resend the order message.
+		case <-ticker.C:
+			fmt.Println("[MH: Master] Sending new orders.")
+			msgTx <- orderMsg
+		}
+	}
+}
+

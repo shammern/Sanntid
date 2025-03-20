@@ -3,7 +3,6 @@ package elevator
 import (
 	"elevator-project/pkg/drivers"
 	"elevator-project/pkg/message"
-	"fmt"
 )
 
 func (e *Elevator) requestsAbove() bool {
@@ -95,95 +94,46 @@ func (e *Elevator) chooseDirection() Direction {
 	}
 }
 
+//TODO: This is a big switchcase function, can it be written better?
+//Checks if there is an active request at the floor that should be cleared. Sends a completedordermsg on the network if clearing an order
 func (e *Elevator) clearHallReqsAtFloor() {
 	switch e.travelDirection {
 	case Up:
 		if e.RequestMatrix.HallRequests[e.currentFloor][0] {
 			e.RequestMatrix.HallRequests[e.currentFloor][0] = false
-			completedOrderMsg := message.Message{
-				Type:        message.CompletedOrder,
-				ElevatorID:  e.ElevatorID,
-				MsgID:       e.counter.Next(),
-				ButtonEvent: drivers.ButtonEvent{Floor: e.currentFloor, Button: drivers.BT_HallUp},
-			}
-			fmt.Printf("[ElevatorFSM] Clearing order: Floor: %d, Type: %d\n", e.currentFloor, int(drivers.BT_HallUp))
-			e.msgTx <- completedOrderMsg
+			e.NotifyMaster(message.CompletedOrder, drivers.ButtonEvent{Floor: e.currentFloor, Button: drivers.BT_HallUp})
 		} else if e.RequestMatrix.HallRequests[e.currentFloor][1] {
 			e.RequestMatrix.HallRequests[e.currentFloor][1] = false
-			completedOrderMsg := message.Message{
-				Type:        message.CompletedOrder,
-				ElevatorID:  e.ElevatorID,
-				MsgID:       e.counter.Next(),
-				ButtonEvent: drivers.ButtonEvent{Floor: e.currentFloor, Button: drivers.BT_HallDown},
-			}
-			fmt.Printf("[ElevatorFSM] learing order: Floor: %d, Type: %d\n", e.currentFloor, int(drivers.BT_HallDown))
-			e.msgTx <- completedOrderMsg
+			e.NotifyMaster(message.CompletedOrder, drivers.ButtonEvent{Floor: e.currentFloor, Button: drivers.BT_HallDown})
 
 		}
 		if e.RequestMatrix.CabRequests[e.currentFloor] {
 			drivers.SetButtonLamp(drivers.BT_Cab, e.currentFloor, false)
 			e.RequestMatrix.CabRequests[e.currentFloor] = false
-			completedOrderMsg := message.Message{
-				Type:        message.CompletedOrder,
-				ElevatorID:  e.ElevatorID,
-				MsgID:       e.counter.Next(),
-				ButtonEvent: drivers.ButtonEvent{Floor: e.currentFloor, Button: drivers.BT_Cab},
-			}
-			fmt.Printf("[ElevatorFSM] Clearing order: Floor: %d, Type: %d\n", e.currentFloor, int(drivers.BT_Cab))
-			e.msgTx <- completedOrderMsg
+			e.NotifyMaster(message.CompletedOrder, drivers.ButtonEvent{Floor: e.currentFloor, Button: drivers.BT_Cab})
 		}
 	case Down:
 		if e.RequestMatrix.HallRequests[e.currentFloor][1] {
 			e.RequestMatrix.HallRequests[e.currentFloor][1] = false
-			completedOrderMsg := message.Message{
-				Type:        message.CompletedOrder,
-				ElevatorID:  e.ElevatorID,
-				MsgID:       e.counter.Next(),
-				ButtonEvent: drivers.ButtonEvent{Floor: e.currentFloor, Button: drivers.BT_HallDown},
-			}
-			fmt.Printf("[ElevatorFSM] Clearing order: Floor: %d, Type: %d\n", e.currentFloor, int(drivers.BT_HallDown))
-			e.msgTx <- completedOrderMsg
-			//} else if !requestsBelow(rm, floor) {
-			//	clear(HallUp)
+			e.NotifyMaster(message.CompletedOrder, drivers.ButtonEvent{Floor: e.currentFloor, Button: drivers.BT_HallDown})
 		}
 		if e.RequestMatrix.CabRequests[e.currentFloor] {
 			drivers.SetButtonLamp(drivers.BT_Cab, e.currentFloor, false)
 			e.RequestMatrix.CabRequests[e.currentFloor] = false
-			completedOrderMsg := message.Message{
-				Type:        message.CompletedOrder,
-				ElevatorID:  e.ElevatorID,
-				MsgID:       e.counter.Next(),
-				ButtonEvent: drivers.ButtonEvent{Floor: e.currentFloor, Button: drivers.BT_Cab},
-			}
-			fmt.Printf("[ElevatorFSM] Clearing order: Floor: %d, Type: %d\n", e.currentFloor, int(drivers.BT_Cab))
-			e.msgTx <- completedOrderMsg
+			e.NotifyMaster(message.CompletedOrder, drivers.ButtonEvent{Floor: e.currentFloor, Button: drivers.BT_Cab})
 		}
 	case Stop:
 		if e.RequestMatrix.CabRequests[e.currentFloor] {
 			e.RequestMatrix.CabRequests[e.currentFloor] = false
+			e.NotifyMaster(message.CompletedOrder, drivers.ButtonEvent{Floor: e.currentFloor, Button: drivers.BT_Cab})
 		}
 
-		if e.RequestMatrix.HallRequests[e.currentFloor][0] || e.RequestMatrix.HallRequests[e.currentFloor][1] {
+		if e.RequestMatrix.HallRequests[e.currentFloor][0] {
 		e.RequestMatrix.HallRequests[e.currentFloor][0] = false
-		completedOrderMsg1 := message.Message{
-			Type:        message.CompletedOrder,
-			ElevatorID:  e.ElevatorID,
-			MsgID:       e.counter.Next(),
-			ButtonEvent: drivers.ButtonEvent{Floor: e.currentFloor, Button: drivers.BT_HallUp},
-		}
-		fmt.Printf("[ElevatorFSM] Clearing order: Floor: %d, Type: %d\n", e.currentFloor, int(drivers.BT_HallUp))
-		e.msgTx <- completedOrderMsg1
-
-		//Add sleep?
-		e.RequestMatrix.HallRequests[e.currentFloor][1] = false
-		completedOrderMsg2 := message.Message{
-			Type:        message.CompletedOrder,
-			ElevatorID:  e.ElevatorID,
-			MsgID:       e.counter.Next(),
-			ButtonEvent: drivers.ButtonEvent{Floor: e.currentFloor, Button: drivers.BT_HallDown},
-		}
-		fmt.Printf("[ElevatorFSM] Clearing order: Floor: %d, Type: %d\n", e.currentFloor, int(drivers.BT_HallDown))
-		e.msgTx <- completedOrderMsg2
+		e.NotifyMaster(message.CompletedOrder, drivers.ButtonEvent{Floor: e.currentFloor, Button: drivers.BT_HallUp})
+		} else if e.RequestMatrix.HallRequests[e.currentFloor][1] {
+			e.RequestMatrix.HallRequests[e.currentFloor][1] = false
+			e.NotifyMaster(message.CompletedOrder, drivers.ButtonEvent{Floor: e.currentFloor, Button: drivers.BT_HallDown})
+		}	
 	}
-}
 }

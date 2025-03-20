@@ -3,7 +3,7 @@ package state
 import (
 	"elevator-project/pkg/config"
 	"elevator-project/pkg/drivers"
-	"elevator-project/pkg/orders"
+	"elevator-project/pkg/RequestMatrix"
 	"fmt"
 	"sync"
 	"time"
@@ -17,7 +17,7 @@ type ElevatorStatus struct {
 	CurrentFloor    int
 	TravelDirection int
 	LastUpdated     time.Time
-	RequestMatrix   orders.RequestMatrix
+	RequestMatrix   RM.RequestMatrix
 }
 
 // Store holds a map of ElevatorStatus instances.
@@ -39,7 +39,7 @@ func NewStore() *Store {
 		// Create the ElevatorStatus instance.
 		status := ElevatorStatus{
 			ElevatorID:    id,
-			RequestMatrix: *orders.NewRequestMatrix(config.NumFloors),
+			RequestMatrix: *RM.NewRequestMatrix(config.NumFloors),
 		}
 		store.elevators[id] = status
 	}
