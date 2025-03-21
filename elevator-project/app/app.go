@@ -17,7 +17,7 @@ var IsMaster bool = false
 var CurrentMasterID int = -1
 var BackupElevatorID int = -1
 var MasterStateStore = state.NewStore()
-var msgID = &message.MsgID{}         
+var msgID = &message.MsgID{}
 var Peers peers.PeerUpdate //to maintain elevators in network
 
 func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, msgTx chan message.Message, elevatorFSM *elevator.Elevator) {
@@ -30,112 +30,113 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 				fmt.Printf("[MH] Received ACK: %#v\n", msg)
 				ackChan <- msg
 			}
-		if msg.Type == message.Heartbeat {
-			MasterStateStore.UpdateHeartbeat(msg.ElevatorID)
-			continue
-		}
-		if msg.ElevatorID != config.ElevatorID {
-			switch msg.Type {
-			case message.Ack:
-				//TODO: check if ack is on correct msg
-				if msg.AckID == msgID {
-					fmt.Printf("Received ACK: %#v\n", msg)
-					ackChan <- msg
-				}
-
-		case message.OrderDelegation:
-			orderData := msg.OrderData
-
-			myOrderData := orderData[strconv.Itoa(config.ElevatorID)]
-			fmt.Println("[MH] My new hallorders are: ")
-			for floor, arr := range myOrderData {
-				fmt.Printf("  Floor %d: Up: %t, Down: %t\n", floor, arr[0], arr[1])
-			}
-
-			events := convertOrderDataToOrders(orderData)
-			for _, event := range events {
-				//fmt.Printf("[MH] Sending order to FSM: floor: %d, button: %d\n", event.Floor, int(event.Button))
-				elevatorFSM.Orders <- event
-			}
-
-			masterStateStore.SetAllHallRequest(msg.HallRequests)
-			elevatorFSM.SetHallLigths(masterStateStore.HallRequests)
-
-			//TODO: Handle new order, add to internal request matrix and send ACK back to master
-			
-			ackMsg := message.Message{
-				Type:       message.Ack,
-				ElevatorID: config.ElevatorID,
-				MsgID:      msgID.Get(),
-				AckID:      msg.MsgID,
-			}
-
-			msgTx <- ackMsg
-
-			case message.MasterQuery: //If the elevator that is running this code is the master, give an announcement to the other elevators
-				if IsMaster {
-					fmt.Printf("[INFO] Mottok MasterQuery. Jeg er master (heis %d), svarer...\n", CurrentMasterID)
-					responseMsg := message.Message{
-						Type:       message.MasterAnnouncement,
-						ElevatorID: CurrentMasterID,
-					}
-					msgTx <- responseMsg
-				}
+			if msg.Type == message.Heartbeat {
+				MasterStateStore.UpdateHeartbeat(msg.ElevatorID)
 				continue
-
-		case message.CompletedOrder:
-			//TODO: Notify
-			fmt.Printf("[MH] Order has been completed: Floor: %d, ButtonType: %d\n", msg.ButtonEvent.Floor, int(msg.ButtonEvent.Button))
-			masterStateStore.ClearOrder(msg.ButtonEvent, msg.ElevatorID)
-			MasterStateStore.ClearHallRequest(msg.ButtonEvent)
-			elevatorFSM.SetHallLigths(MasterStateStore.HallRequests)
-
-		case message.ButtonEvent:
-			
-			if IsMaster {
-				
-				//SetHallRequest should maybe be moved to a later stage after an ack has been received.
-				//masterStateStore.SetHallRequest(msg.ButtonEvent)
-				if msg.ButtonEvent.Button != drivers.BT_Cab {
-					masterStateStore.SetHallRequest(msg.ButtonEvent)
-					newOrder, _ := HRA.HRARun(masterStateStore)
-					orderMsg := message.Message{
-						Type:       message.OrderDelegation,
-						ElevatorID: config.ElevatorID,
-						MsgID:      msgID.Next(),
-						AckID:      msg.MsgID,
-						OrderData:  newOrder,
-						HallRequests: masterStateStore.HallRequests,
+			}
+			if msg.ElevatorID != config.ElevatorID {
+				switch msg.Type {
+				case message.Ack:
+					//TODO: check if ack is on correct msg
+					if msg.AckID == msgID.Get() {
+						fmt.Printf("Received ACK: %#v\n", msg)
+						ackChan <- msg
 					}
 
-					msgTx <- orderMsg
+				case message.OrderDelegation:
+					orderData := msg.OrderData
+
+					myOrderData := orderData[strconv.Itoa(config.ElevatorID)]
+					fmt.Println("[MH] My new hallorders are: ")
+					for floor, arr := range myOrderData {
+						fmt.Printf("  Floor %d: Up: %t, Down: %t\n", floor, arr[0], arr[1])
+					}
+
+					events := convertOrderDataToOrders(orderData)
+					for _, event := range events {
+						//fmt.Printf("[MH] Sending order to FSM: floor: %d, button: %d\n", event.Floor, int(event.Button))
+						elevatorFSM.Orders <- event
+					}
+
+					MasterStateStore.SetAllHallRequest(msg.HallRequests)
+					elevatorFSM.SetHallLigths(MasterStateStore.HallRequests)
+
+					//TODO: Handle new order, add to internal request matrix and send ACK back to master
+
+					ackMsg := message.Message{
+						Type:       message.Ack,
+						ElevatorID: config.ElevatorID,
+						MsgID:      msgID.Get(),
+						AckID:      msg.MsgID,
+					}
+
+					msgTx <- ackMsg
+
+				case message.MasterQuery: //If the elevator that is running this code is the master, give an announcement to the other elevators
+					if IsMaster {
+						fmt.Printf("[INFO] Mottok MasterQuery. Jeg er master (heis %d), svarer...\n", CurrentMasterID)
+						responseMsg := message.Message{
+							Type:       message.MasterAnnouncement,
+							ElevatorID: CurrentMasterID,
+						}
+						msgTx <- responseMsg
+					}
+					continue
+
+				case message.CompletedOrder:
+					//TODO: Notify
+					fmt.Printf("[MH] Order has been completed: Floor: %d, ButtonType: %d\n", msg.ButtonEvent.Floor, int(msg.ButtonEvent.Button))
+					MasterStateStore.ClearOrder(msg.ButtonEvent, msg.ElevatorID)
+					MasterStateStore.ClearHallRequest(msg.ButtonEvent)
+					elevatorFSM.SetHallLigths(MasterStateStore.HallRequests)
+
+				case message.ButtonEvent:
+
+					if IsMaster {
+
+						//SetHallRequest should maybe be moved to a later stage after an ack has been received.
+						//MasterStateStore.SetHallRequest(msg.ButtonEvent)
+						if msg.ButtonEvent.Button != drivers.BT_Cab {
+							MasterStateStore.SetHallRequest(msg.ButtonEvent)
+							newOrder, _ := HRA.HRARun(MasterStateStore)
+							orderMsg := message.Message{
+								Type:         message.OrderDelegation,
+								ElevatorID:   config.ElevatorID,
+								MsgID:        msgID.Next(),
+								AckID:        msg.MsgID,
+								OrderData:    newOrder,
+								HallRequests: MasterStateStore.HallRequests,
+							}
+
+							msgTx <- orderMsg
+						}
+
+					}
+
+				case message.Heartbeat:
+					MasterStateStore.UpdateHeartbeat(msg.ElevatorID)
+
+				case message.State:
+					status := state.ElevatorStatus{
+						ElevatorID:      msg.ElevatorID,
+						State:           msg.StateData.State,
+						Direction:       msg.StateData.Direction,
+						CurrentFloor:    msg.StateData.CurrentFloor,
+						TravelDirection: msg.StateData.TravelDirection,
+						RequestMatrix:   msg.StateData.RequestMatrix,
+						LastUpdated:     msg.StateData.LastUpdated,
+					}
+					MasterStateStore.UpdateStatus(status)
+				//MasterStateStore.HallRequests = msg.HallRequests
+				//elevatorFSM.SetHallLigths(MasterStateStore.HallRequests)
+
+				case message.MasterAnnouncement:
+					fmt.Printf("[INFO] Oppdaterer master til heis %d\n", msg.ElevatorID)
+					CurrentMasterID = msg.ElevatorID
+					IsMaster = (config.ElevatorID == msg.ElevatorID)
+				default:
+					fmt.Printf("Received message: %#v\n", msg)
 				}
-
-			}
-
-		case message.Heartbeat:
-			masterStateStore.UpdateHeartbeat(msg.ElevatorID)
-
-		case message.State:
-			status := state.ElevatorStatus{
-				ElevatorID:      msg.ElevatorID,
-				State:           msg.StateData.State,
-				Direction:       msg.StateData.Direction,
-				CurrentFloor:    msg.StateData.CurrentFloor,
-				TravelDirection: msg.StateData.TravelDirection,
-				RequestMatrix:   msg.StateData.RequestMatrix,
-				LastUpdated:     msg.StateData.LastUpdated,
-			}
-			masterStateStore.UpdateStatus(status)
-			//masterStateStore.HallRequests = msg.HallRequests
-			//elevatorFSM.SetHallLigths(masterStateStore.HallRequests)
-
-			case message.MasterAnnouncement:
-				fmt.Printf("[INFO] Oppdaterer master til heis %d\n", msg.ElevatorID)
-				CurrentMasterID = msg.ElevatorID
-				IsMaster = (config.ElevatorID == msg.ElevatorID)
-			default:
-				fmt.Printf("Received message: %#v\n", msg)
 			}
 		}
 	}
@@ -162,10 +163,10 @@ func StartWorldviewBC(e *elevator.Elevator, msgTx chan message.Message, counter 
 		status := e.GetStatus()
 		MasterStateStore.UpdateStatus(status)
 		stateMsg := message.Message{
-			Type:       message.State,
-			ElevatorID: status.ElevatorID,
-			MsgID:      counter.Next(),
-			HallRequests: masterStateStore.HallRequests,
+			Type:         message.State,
+			ElevatorID:   status.ElevatorID,
+			MsgID:        counter.Next(),
+			HallRequests: MasterStateStore.HallRequests,
 			StateData: &message.ElevatorState{
 				ElevatorID:      status.ElevatorID,
 				State:           status.State,

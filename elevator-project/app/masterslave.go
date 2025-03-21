@@ -2,9 +2,7 @@ package app
 
 import (
 	"elevator-project/pkg/config"
-	"elevator-project/pkg/drivers"
 	"elevator-project/pkg/message"
-	"elevator-project/pkg/orders"
 	"elevator-project/pkg/state"
 	"fmt"
 	"sort"
@@ -108,28 +106,6 @@ func MonitorElevatorHeartbeats(msgTx chan message.Message) {
 			}
 			if time.Since(status.LastUpdated) > 5*time.Second {
 				fmt.Printf("Elevator %d heartbeat stale. Reassigning its orders.\n", id)
-				ReassignOrders(status, msgTx)
-			}
-		}
-	}
-}
-
-// Reassign orders from a failed elevator to active elevators
-func ReassignOrders(failedStatus state.ElevatorStatus, msgTx chan message.Message) {
-	for floor, hallRequests := range failedStatus.RequestMatrix.HallRequests {
-		for dir, active := range hallRequests {
-			if active {
-				newElevator := orders.FindBestElevator(drivers.ButtonEvent{Floor: floor, Button: drivers.ButtonType(dir)}, Peers.Peers)
-				if newElevator != "" {
-					fmt.Printf("Reassigning hall request at floor %d to elevator %s.\n", floor, newElevator)
-					orderMsg := message.Message{
-						Type:       message.OrderDelegation,
-						ElevatorID: config.ElevatorID,
-						MsgID:      msgID,
-						OrderData:  drivers.ButtonEvent{Floor: floor, Button: drivers.ButtonType(dir)},
-					}
-					msgTx <- orderMsg
-				}
 			}
 		}
 	}
