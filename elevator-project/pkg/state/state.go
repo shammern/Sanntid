@@ -2,6 +2,7 @@ package state
 
 import (
 	"elevator-project/pkg/config"
+	"elevator-project/pkg/drivers"
 	"elevator-project/pkg/orders"
 	"fmt"
 	"sync"
@@ -10,48 +11,40 @@ import (
 
 // ElevatorStatus holds information about an elevator.
 type ElevatorStatus struct {
-	ElevatorID    int
-	State         int
-	Direction     int // Should be changed to driver.MD?
-	CurrentFloor  int
-	TargetFloor   int
-	LastUpdated   time.Time
-	RequestMatrix orders.RequestMatrix
-	Lights        [][]bool
+	ElevatorID      int
+	State           int
+	Direction       int // Should be changed to driver.MD?
+	CurrentFloor    int
+	TravelDirection int
+	LastUpdated     time.Time
+	RequestMatrix   orders.RequestMatrix
 }
 
 // Store holds a map of ElevatorStatus instances.
 type Store struct {
-	mu        sync.RWMutex
-	elevators map[int]ElevatorStatus
+	mu           sync.RWMutex
+	elevators    map[int]ElevatorStatus
+	HallRequests [][2]bool
 }
 
 // NewStore creates a new Store.
 func NewStore() *Store {
-	return &Store{elevators: make(map[int]ElevatorStatus)}
-}
 
-// NewElevatorStatus is a helper to initialize an ElevatorStatus with properly allocated Lights.
-func NewElevatorStatus(elevatorID int) ElevatorStatus {
-	lights := make([][]bool, config.NumFloors)
-	for i := 0; i < config.NumFloors; i++ {
-		lights[i] = make([]bool, 2)
+	store := &Store{
+		elevators:    make(map[int]ElevatorStatus),
+		HallRequests: make([][2]bool, config.NumFloors),
 	}
-	return ElevatorStatus{
-		ElevatorID:  elevatorID,
-		LastUpdated: time.Now(),
-		Lights:      lights,
-		// Initialize other fields as needed.
-	}
-}
 
-func InsertElevators(s *Store) {
-	// Define the number of floors and buttons per floor.
-
-	for _, id := range []int{1, 2, 3} {
-		status := NewElevatorStatus(id)
-		s.UpdateStatus(status)
+	for id := 1; id <= 3; id++ {
+		// Create the ElevatorStatus instance.
+		status := ElevatorStatus{
+			ElevatorID:    id,
+			RequestMatrix: *orders.NewRequestMatrix(config.NumFloors),
+		}
+		store.elevators[id] = status
 	}
+
+	return store
 }
 
 // UpdateStatus updates or adds an ElevatorStatus to the store.
@@ -82,47 +75,75 @@ func (s *Store) GetAll() map[int]ElevatorStatus {
 	return copy
 }
 
-// SetHallLight sets the light for a specific floor and button for the current elevator.
-func (s *Store) SetHallLight(floor int, button int) error {
+// SetHallLight sets the request for a specific floor and button for the current elevator.
+func (s *Store) SetHallRequest(button drivers.ButtonEvent) error {
+	//TODO: Add fault check if trying to set a cab button
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	status := s.elevators[config.ElevatorID]
-
-	// Check floor index.
-	if floor < 0 || floor >= len(status.Lights) {
-		return fmt.Errorf("floor index %d out of bounds", floor)
+	if button.Floor < 0 || button.Floor >= len(s.HallRequests) {
+		return fmt.Errorf("floor index %d out of bounds", button.Floor)
 	}
 
-	// Check button index.
-	if button < 0 || button >= len(status.Lights[floor]) {
-		return fmt.Errorf("button index %d out of bounds for floor %d", button, floor)
+	s.HallRequests[button.Floor][int(button.Button)] = true
+
+	return nil
+}
+
+// SetHallLight clears the request for a specific floor and button for the current elevator.
+func (s *Store) ClearHallRequest(button drivers.ButtonEvent) error {
+	//TODO: Add fault check if trying to set a cab button
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if button.Floor < 0 || button.Floor >= len(s.HallRequests) {
+		return fmt.Errorf("floor index %d out of bounds", button.Floor)
 	}
 
-	// Set the light.
-	status.Lights[floor][button] = true
-	// Write the updated status back to the store.
-	s.elevators[config.ElevatorID] = status
+	if button.Button == drivers.BT_Cab {
+		return nil
+	}
+
+	s.HallRequests[button.Floor][int(button.Button)] = false
+
 	return nil
 }
 
 // ClearHallLight clears the light for a specific floor and button for all elevators.
-func (s *Store) ClearHallLight(floor int, button int) {
+func (s *Store) ClearOrder(button drivers.ButtonEvent, elevatorID int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for id, elevator := range s.elevators {
-		if floor < len(elevator.Lights) && button < len(elevator.Lights[floor]) {
-			elevator.Lights[floor][button] = false
-			s.elevators[id] = elevator
-		}
+
+	if button.Floor < 0 || button.Floor >= len(s.HallRequests) {
+		return fmt.Errorf("floor index %d out of bounds", button.Floor)
 	}
+	switch button.Button {
+	case drivers.BT_Cab:
+		s.elevators[elevatorID].RequestMatrix.CabRequests[button.Floor] = false
+
+	case drivers.BT_HallUp:
+		s.elevators[elevatorID].RequestMatrix.HallRequests[button.Floor][0] = false
+		s.HallRequests[button.Floor][int(button.Button)] = false
+
+	case drivers.BT_HallDown:
+		s.elevators[elevatorID].RequestMatrix.HallRequests[button.Floor][0] = false
+		s.HallRequests[button.Floor][int(button.Button)] = false
+
+	}
+
+	return nil
 }
 
 // GetElevatorLights returns the Lights matrix for the given elevator ID.
-func (s *Store) GetElevatorLights(elevatorID int) [][]bool {
+func (s *Store) GetHallOrders() [][2]bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	return s.HallRequests
+}
 
-	status := s.elevators[elevatorID]
-	return status.Lights
+// SetHallLight sets the request for a specific floor and button for the current elevator.
+func (s *Store) SetAllHallRequest(matrix [][2]bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.HallRequests = matrix
 }

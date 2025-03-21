@@ -7,17 +7,14 @@ import (
 )
 
 type RequestMatrix struct {
-	HallRequests [][]bool
+	HallRequests [][2]bool
 	CabRequests  []bool
 }
 
 func NewRequestMatrix(numFloors int) *RequestMatrix {
 	rm := &RequestMatrix{
-		HallRequests: make([][]bool, numFloors),
+		HallRequests: make([][2]bool, numFloors),
 		CabRequests:  make([]bool, numFloors),
-	}
-	for i := 0; i < numFloors; i++ {
-		rm.HallRequests[i] = make([]bool, 2)
 	}
 	return rm
 }
@@ -65,7 +62,6 @@ func (rm *RequestMatrix) HasCabRequest(floor int) (bool, error) {
 	}
 	return rm.CabRequests[floor], nil
 }
-
 
 func (rm *RequestMatrix) DebugPrint() {
 	fmt.Println("==== Request Matrix ====")

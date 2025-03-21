@@ -27,3 +27,16 @@ func GetOtherElevatorAddresses(ElevatorID int) []string {
 	}
 	return others
 }
+
+func ElevatorIntToString(num int) string {
+	switch num {
+	case 1:
+		return "one"
+	case 2:
+		return "two"
+	case 3:
+		return "three"
+	default:
+		return ""
+	}
+}

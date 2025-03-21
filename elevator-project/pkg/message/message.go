@@ -21,22 +21,24 @@ const (
 )
 
 type ElevatorState struct {
-	ElevatorID    int
-	State         int
-	Direction     int
-	CurrentFloor  int
-	TargetFloor   int
-	LastUpdated   time.Time
-	RequestMatrix orders.RequestMatrix
+	ElevatorID      int
+	State           int
+	Direction       int
+	CurrentFloor    int
+	TravelDirection int
+	LastUpdated     time.Time
+	RequestMatrix   orders.RequestMatrix
 }
 
 type Message struct {
-	Type       MessageType
-	ElevatorID int
-	MsgID      int
-	StateData  *ElevatorState
-	OrderData  drivers.ButtonEvent
-	AckID      int //AckID = msgID for the corresponding message requiring an ack
+	Type        MessageType
+	ElevatorID  int
+	MsgID       int
+	StateData   *ElevatorState //Why is this a pointer?
+	ButtonEvent drivers.ButtonEvent
+	OrderData   map[string][][2]bool //Hallorders for individual elevators
+	HallRequests [][2]bool			 // All active hallorders aka the halllights
+	AckID       int                  //AckID = msgID for the corresponding message requiring an ack
 }
 
 type MsgID struct {
@@ -51,4 +53,10 @@ func (mc *MsgID) Next() int {
 	currentID := mc.id
 	mc.id++
 	return currentID
+}
+
+func (m *MsgID) Get() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.id
 }
