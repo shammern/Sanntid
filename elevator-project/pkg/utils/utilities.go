@@ -4,6 +4,9 @@ import (
 	"elevator-project/pkg/config"
 	"elevator-project/pkg/drivers"
 	"elevator-project/pkg/message"
+	"elevator-project/pkg/network/peers"
+	"fmt"
+	"strconv"
 )
 
 func ButtonTypeToString(b drivers.ButtonType) string {
@@ -55,7 +58,6 @@ func MessageTypeToString(m message.MessageType) string {
 	}
 }
 
-
 func GetOtherElevatorAddresses(ElevatorID int) []string {
 	others := []string{}
 	for id, address := range config.UDPAddresses {
@@ -77,4 +79,52 @@ func ElevatorIntToString(num int) string {
 	default:
 		return ""
 	}
+}
+
+func GetActiveElevators() []int {
+	activeElevators := peers.LatestPeerUpdate.Peers
+	var peerIDs []int
+	for _, peerStr := range activeElevators {
+		id, _ := strconv.Atoi(peerStr)
+		peerIDs = append(peerIDs, id)
+	}
+	return peerIDs
+}
+
+func PrintAckTracker(a message.AckTracker) {
+	fmt.Println("AckTracker Details:")
+	fmt.Printf("  MsgID: %d\n", a.MsgID)
+	fmt.Printf("  SentTime: %v\n", a.SentTime)
+	fmt.Println("  ExpectedAcks:")
+	for id, acked := range a.ExpectedAcks {
+		fmt.Printf("    Elevator %d: %t\n", id, acked)
+	}
+
+}
+
+// CompareMaps returns true if the two maps are equal.
+// Two maps are considered equal if they have the same keys, and for each key,
+// the corresponding slice of [2]bool arrays is of the same length and contains identical arrays.
+func CompareMaps(m1, m2 map[string][][2]bool) bool {
+	// Iterate over all keys and slices in m1.
+	for key, slice1 := range m1 {
+		slice2, ok := m2[key]
+		if !ok {
+			// Key from m1 not present in m2.
+			return false
+		}
+		// Check if the slices are of equal length.
+		if len(slice1) != len(slice2) {
+			return false
+		}
+		// Compare each [2]bool array in the slices.
+		for i, arr1 := range slice1 {
+			arr2 := slice2[i]
+			if arr1[0] != arr2[0] || arr1[1] != arr2[1] {
+				return false
+			}
+		}
+	}
+
+	return true
 }

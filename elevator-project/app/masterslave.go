@@ -21,7 +21,7 @@ func MonitorMasterHeartbeat(peerAddrs []string) {
 	defer ticker.Stop()
 
 	for range ticker.C {
-		statuses := masterStateStore.GetAll()
+		statuses := MasterStateStore.GetAll()
 		masterStatus, exists := statuses[CurrentMasterID]
 
 		if !exists || time.Since(masterStatus.LastUpdated) > 5*time.Second {
@@ -68,7 +68,7 @@ func MonitorElevatorHeartbeats() {
 	defer ticker.Stop()
 
 	for range ticker.C {
-		statuses := masterStateStore.GetAll()
+		statuses := MasterStateStore.GetAll()
 		for id, status := range statuses {
 			if id == config.ElevatorID {
 				continue

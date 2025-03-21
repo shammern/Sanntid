@@ -16,6 +16,7 @@ TODO:
 
 BUGS:
     - Elevator always enters DoorOpen state after init. 
+    - Prints state = idle twice when entering idlestate
 
 Thoughs: 
-    - Might need to implement a list of MsgID's we are waiting for an ack to. 
+   

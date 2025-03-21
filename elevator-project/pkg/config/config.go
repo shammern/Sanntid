@@ -3,9 +3,9 @@ package config
 import "time"
 
 var ElevatorAddresses = map[int]string{
-	1: "localhost:15555",
-	2: "localhost:15556",
-	3: "localhost:15557",
+	1: "localhost:7331",
+	2: "localhost:7332",
+	3: "localhost:7333",
 }
 
 var UDPAddresses = map[int]string{
@@ -24,5 +24,6 @@ var NumFloors = 4
 var ElevatorID = 0
 var HeartBeatInterval = 100 * time.Millisecond
 var WorldviewBCInterval = 100 * time.Millisecond
+var ResendInterval = 10 * time.Millisecond
 var BCport = 15500
 var P2Pport = 16000

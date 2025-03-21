@@ -1,10 +1,12 @@
 package peers
 
 import (
+	"elevator-project/pkg/config"
 	"elevator-project/pkg/network/conn"
 	"fmt"
 	"net"
 	"sort"
+	"strconv"
 	"time"
 )
 
@@ -13,6 +15,8 @@ type PeerUpdate struct {
 	New   string
 	Lost  []string
 }
+
+var LatestPeerUpdate PeerUpdate
 
 const interval = 15 * time.Millisecond
 const timeout = 500 * time.Millisecond
@@ -83,5 +87,21 @@ func Receiver(port int, peerUpdateCh chan<- PeerUpdate) {
 			sort.Strings(p.Lost)
 			peerUpdateCh <- p
 		}
+	}
+}
+
+func P2Pmonitor() {
+	//This function can be used to trigger events if units exit or enter the network
+	peerUpdateCh := make(chan PeerUpdate)
+	peerTxEnable := make(chan bool)
+	go Transmitter(config.P2Pport, strconv.Itoa(config.ElevatorID), peerTxEnable)
+	go Receiver(config.P2Pport, peerUpdateCh)
+	for {
+		update := <-peerUpdateCh
+		LatestPeerUpdate = update
+		fmt.Printf("Peer update:\n")
+		fmt.Printf("  Peers:    %q\n", update.Peers)
+		fmt.Printf("  New:      %q\n", update.New)
+		fmt.Printf("  Lost:     %q\n", update.Lost)
 	}
 }

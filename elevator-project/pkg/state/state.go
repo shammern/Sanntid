@@ -1,10 +1,11 @@
 package state
 
 import (
+	RM "elevator-project/pkg/RequestMatrix"
 	"elevator-project/pkg/config"
 	"elevator-project/pkg/drivers"
-	"elevator-project/pkg/RequestMatrix"
 	"fmt"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -22,17 +23,19 @@ type ElevatorStatus struct {
 
 // Store holds a map of ElevatorStatus instances.
 type Store struct {
-	mu           sync.RWMutex
-	elevators    map[int]ElevatorStatus
-	HallRequests [][2]bool
+	mu            sync.RWMutex
+	Elevators     map[int]ElevatorStatus
+	HallRequests  [][2]bool
+	CurrentOrders map[string][][2]bool
 }
 
 // NewStore creates a new Store.
 func NewStore() *Store {
 
 	store := &Store{
-		elevators:    make(map[int]ElevatorStatus),
-		HallRequests: make([][2]bool, config.NumFloors),
+		Elevators:     make(map[int]ElevatorStatus),
+		HallRequests:  make([][2]bool, config.NumFloors),
+		CurrentOrders: make(map[string][][2]bool),
 	}
 
 	for id := 1; id <= 3; id++ {
@@ -41,7 +44,8 @@ func NewStore() *Store {
 			ElevatorID:    id,
 			RequestMatrix: *RM.NewRequestMatrix(config.NumFloors),
 		}
-		store.elevators[id] = status
+		store.Elevators[id] = status
+		store.CurrentOrders[strconv.Itoa(id)] = make([][2]bool, config.NumFloors)
 	}
 
 	return store
@@ -51,16 +55,16 @@ func NewStore() *Store {
 func (s *Store) UpdateStatus(status ElevatorStatus) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.elevators[status.ElevatorID] = status
+	s.Elevators[status.ElevatorID] = status
 }
 
 // UpdateHeartbeat updates the heartbeat timestamp for a given elevator.
 func (s *Store) UpdateHeartbeat(elevID int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	status := s.elevators[elevID]
+	status := s.Elevators[elevID]
 	status.LastUpdated = time.Now()
-	s.elevators[elevID] = status
+	s.Elevators[elevID] = status
 }
 
 // GetAll returns a copy of all elevator statuses.
@@ -69,7 +73,7 @@ func (s *Store) GetAll() map[int]ElevatorStatus {
 	defer s.mu.RUnlock()
 
 	copy := make(map[int]ElevatorStatus)
-	for id, status := range s.elevators {
+	for id, status := range s.Elevators {
 		copy[id] = status
 	}
 	return copy
@@ -119,14 +123,14 @@ func (s *Store) ClearOrder(button drivers.ButtonEvent, elevatorID int) error {
 	}
 	switch button.Button {
 	case drivers.BT_Cab:
-		s.elevators[elevatorID].RequestMatrix.CabRequests[button.Floor] = false
+		s.Elevators[elevatorID].RequestMatrix.CabRequests[button.Floor] = false
 
 	case drivers.BT_HallUp:
-		s.elevators[elevatorID].RequestMatrix.HallRequests[button.Floor][0] = false
+		s.Elevators[elevatorID].RequestMatrix.HallRequests[button.Floor][0] = false
 		s.HallRequests[button.Floor][int(button.Button)] = false
 
 	case drivers.BT_HallDown:
-		s.elevators[elevatorID].RequestMatrix.HallRequests[button.Floor][0] = false
+		s.Elevators[elevatorID].RequestMatrix.HallRequests[button.Floor][0] = false
 		s.HallRequests[button.Floor][int(button.Button)] = false
 
 	}
@@ -142,7 +146,7 @@ func (s *Store) GetHallOrders() [][2]bool {
 }
 
 // SetHallLight sets the request for a specific floor and button for the current elevator.
-func (s *Store) SetAllHallRequest(matrix [][2]bool){
+func (s *Store) SetAllHallRequest(matrix [][2]bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.HallRequests = matrix
