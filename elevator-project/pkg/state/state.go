@@ -1,7 +1,6 @@
 package state
 
 import (
-	"elevator-project/pkg/config"
 	"elevator-project/pkg/drivers"
 	"elevator-project/pkg/orders"
 	"fmt"
@@ -29,22 +28,7 @@ type Store struct {
 
 // NewStore creates a new Store.
 func NewStore() *Store {
-
-	store := &Store{
-		elevators:    make(map[int]ElevatorStatus),
-		HallRequests: make([][2]bool, config.NumFloors),
-	}
-
-	for id := 1; id <= 3; id++ {
-		// Create the ElevatorStatus instance.
-		status := ElevatorStatus{
-			ElevatorID:    id,
-			RequestMatrix: *orders.NewRequestMatrix(config.NumFloors),
-		}
-		store.elevators[id] = status
-	}
-
-	return store
+	return &Store{elevators: make(map[int]ElevatorStatus)}
 }
 
 // UpdateStatus updates or adds an ElevatorStatus to the store.

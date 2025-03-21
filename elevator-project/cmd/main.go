@@ -40,10 +40,10 @@ func main() {
 		}
 	}()
 
+	go app.StartHeartbeatBC(msgTx)
 	go elevator.Run()
 	go app.MonitorSystemInputs(elevator, msgTx)
 	go app.P2Pmonitor(msgTx)
 	go app.MonitorMasterHeartbeat(app.MasterStateStore, msgTx)
-
 	select {}
 }
