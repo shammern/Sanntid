@@ -164,26 +164,26 @@ func (e *Elevator) clearHallReqsAtFloor() {
 		}
 
 		if e.RequestMatrix.HallRequests[e.currentFloor][0] || e.RequestMatrix.HallRequests[e.currentFloor][1] {
-		e.RequestMatrix.HallRequests[e.currentFloor][0] = false
-		completedOrderMsg1 := message.Message{
-			Type:        message.CompletedOrder,
-			ElevatorID:  e.ElevatorID,
-			MsgID:       e.counter.Next(),
-			ButtonEvent: drivers.ButtonEvent{Floor: e.currentFloor, Button: drivers.BT_HallUp},
-		}
-		fmt.Printf("[ElevatorFSM] Clearing order: Floor: %d, Type: %d\n", e.currentFloor, int(drivers.BT_HallUp))
-		e.msgTx <- completedOrderMsg1
+			e.RequestMatrix.HallRequests[e.currentFloor][0] = false
+			completedOrderMsg1 := message.Message{
+				Type:        message.CompletedOrder,
+				ElevatorID:  e.ElevatorID,
+				MsgID:       e.counter.Next(),
+				ButtonEvent: drivers.ButtonEvent{Floor: e.currentFloor, Button: drivers.BT_HallUp},
+			}
+			fmt.Printf("[ElevatorFSM] Clearing order: Floor: %d, Type: %d\n", e.currentFloor, int(drivers.BT_HallUp))
+			e.msgTx <- completedOrderMsg1
 
-		//Add sleep?
-		e.RequestMatrix.HallRequests[e.currentFloor][1] = false
-		completedOrderMsg2 := message.Message{
-			Type:        message.CompletedOrder,
-			ElevatorID:  e.ElevatorID,
-			MsgID:       e.counter.Next(),
-			ButtonEvent: drivers.ButtonEvent{Floor: e.currentFloor, Button: drivers.BT_HallDown},
+			//Add sleep?
+			e.RequestMatrix.HallRequests[e.currentFloor][1] = false
+			completedOrderMsg2 := message.Message{
+				Type:        message.CompletedOrder,
+				ElevatorID:  e.ElevatorID,
+				MsgID:       e.counter.Next(),
+				ButtonEvent: drivers.ButtonEvent{Floor: e.currentFloor, Button: drivers.BT_HallDown},
+			}
+			fmt.Printf("[ElevatorFSM] Clearing order: Floor: %d, Type: %d\n", e.currentFloor, int(drivers.BT_HallDown))
+			e.msgTx <- completedOrderMsg2
 		}
-		fmt.Printf("[ElevatorFSM] Clearing order: Floor: %d, Type: %d\n", e.currentFloor, int(drivers.BT_HallDown))
-		e.msgTx <- completedOrderMsg2
 	}
-}
 }

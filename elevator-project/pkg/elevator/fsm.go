@@ -13,7 +13,8 @@ import (
 type ElevatorState int
 
 const (
-	Idle ElevatorState = iota
+	Init ElevatorState = iota
+	Idle
 	MovingUp
 	MovingDown
 	DoorOpen
@@ -41,7 +42,7 @@ const (
 
 type Order struct {
 	Event drivers.ButtonEvent
-	Flag bool
+	Flag  bool
 }
 
 // used for internal elevator logic and handlig
@@ -81,7 +82,7 @@ func NewElevator(ElevatorID int, msgTx chan message.Message, counter *message.Ms
 
 	return &Elevator{
 		ElevatorID:      ElevatorID,
-		state:           Idle,
+		state:           Init,
 		currentFloor:    validFloor,
 		RequestMatrix:   orders.NewRequestMatrix(config.NumFloors),
 		Orders:          make(chan Order, 10),
@@ -127,8 +128,7 @@ func (e *Elevator) Run() {
 	}
 }
 
-
-//TODO: It might be cleaner if handleNewOrder receives a whole requestMatrix rather than multiple orders.
+// TODO: It might be cleaner if handleNewOrder receives a whole requestMatrix rather than multiple orders.
 func (e *Elevator) handleNewOrder(newOrder Order) {
 	//fmt.Printf("[ElevatorFSM] New order received type: %d, floor: %d\n", int(order.Button), order.Floor)
 
@@ -145,16 +145,16 @@ func (e *Elevator) handleNewOrder(newOrder Order) {
 
 	if newOrder.Flag {
 		if newOrder.Event.Floor == e.currentFloor && e.state == Idle ||
-		newOrder.Event.Floor == e.currentFloor && e.state == DoorOpen ||
-		newOrder.Event.Floor == e.currentFloor && e.state == DoorObstructed {
-		fmt.Printf("[ElevatorFSM] Received order on same floor. Ordertype: %d, floor: %d\n", int(newOrder.Event.Button), newOrder.Event.Floor)
-		//drivers.SetButtonLamp(order.Button, order.Floor, false)
-		e.clearHallReqsAtFloor()
-		drivers.SetDoorOpenLamp(true)
-		e.transitionTo(DoorOpen)
-		return
+			newOrder.Event.Floor == e.currentFloor && e.state == DoorOpen ||
+			newOrder.Event.Floor == e.currentFloor && e.state == DoorObstructed {
+			fmt.Printf("[ElevatorFSM] Received order on same floor. Ordertype: %d, floor: %d\n", int(newOrder.Event.Button), newOrder.Event.Floor)
+			//drivers.SetButtonLamp(order.Button, order.Floor, false)
+			e.clearHallReqsAtFloor()
+			drivers.SetDoorOpenLamp(true)
+			e.transitionTo(DoorOpen)
+			return
+		}
 	}
-}
 }
 
 func (e *Elevator) handleFSMEvent(ev FsmEvent) {
@@ -162,6 +162,12 @@ func (e *Elevator) handleFSMEvent(ev FsmEvent) {
 	case EventArrivedAtFloor:
 		e.currentFloor = drivers.GetFloor()
 		drivers.SetFloorIndicator(e.currentFloor)
+		if e.state == Init {
+			drivers.SetMotorDirection(drivers.MD_Stop)
+			drivers.SetDoorOpenLamp(false) // Sikrer at døren forblir lukket
+			e.transitionTo(Idle)
+			return
+		}
 		if e.shouldStop() {
 			e.clearHallReqsAtFloor()
 			drivers.SetMotorDirection(drivers.MD_Stop)
@@ -201,6 +207,8 @@ func (e *Elevator) handleFSMEvent(ev FsmEvent) {
 func (e *Elevator) transitionTo(newState ElevatorState) {
 	e.state = newState
 	switch newState {
+	case Init:
+		fmt.Println("[ElevatorFSM] State = Init")
 	case Idle:
 		fmt.Println("[ElevatorFSM] State = Idle")
 	case DoorOpen:
@@ -258,7 +266,7 @@ func (e *Elevator) SetHallLigths(matrix [][2]bool) {
 	for i := 0; i < config.NumFloors-1; i++ {
 		drivers.SetButtonLamp(drivers.BT_HallUp, i, matrix[i][0])
 	}
-	
+
 	for i := 1; i < config.NumFloors; i++ {
 		drivers.SetButtonLamp(drivers.BT_HallDown, i, matrix[i][1])
 	}

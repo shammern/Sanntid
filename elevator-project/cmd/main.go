@@ -9,8 +9,6 @@ import (
 	"elevator-project/pkg/message"
 	"elevator-project/pkg/network/bcast"
 	"flag"
-	"fmt"
-	"time"
 )
 
 func main() {
@@ -31,14 +29,14 @@ func main() {
 	go app.MessageHandler(msgRx, ackChan, msgTx, elevator)
 	app.MasterStateStore.UpdateHeartbeat(config.ElevatorID)
 
-	go func() { //Kun til debugging, kan fjernes, viser hvem som er masteren
+	/*go func() { //Kun til debugging, kan fjernes, viser hvem som er masteren
 		ticker := time.NewTicker(1 * time.Second)
 		defer ticker.Stop()
 
 		for range ticker.C {
 			fmt.Printf("[Elevator %d] Nåværende master: %d\n", config.ElevatorID, app.CurrentMasterID)
 		}
-	}()
+	}()*/
 
 	go app.StartHeartbeatBC(msgTx)
 	go elevator.Run()
