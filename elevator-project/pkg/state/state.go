@@ -142,7 +142,7 @@ func (s *Store) GetHallOrders() [][2]bool {
 }
 
 // SetHallLight sets the request for a specific floor and button for the current elevator.
-func (s *Store) SetAllHallRequest(matrix [][2]bool){
+func (s *Store) SetAllHallRequest(matrix [][2]bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.HallRequests = matrix
