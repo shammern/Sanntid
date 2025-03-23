@@ -21,7 +21,7 @@ type HRAInput struct {
 	States       map[string]HRAElevState `json:"states"`
 }
 
-func HRARun(st *state.Store) (map[string][][2]bool, error) {
+func HRARun(st *state.Store) (map[string][][2]bool, HRAInput, error) {
 	hraExecutable := ""
 	switch runtime.GOOS {
 	case "linux":
@@ -36,16 +36,18 @@ func HRARun(st *state.Store) (map[string][][2]bool, error) {
 
 	statesMap := make(map[string]HRAElevState)
 	for id, elev := range allElevators {
+		if elev.Available {
 
-		dirString := directionIntToString(elev.Direction)
+			dirString := DirectionIntToString(elev.TravelDirection)
 
-		stateString := stateIntToString(elev.State)
+			stateString := StateIntToString(elev.State)
 
-		statesMap[strconv.Itoa(id)] = HRAElevState{
-			Behavior:    stateString,
-			Floor:       elev.CurrentFloor,
-			Direction:   dirString,
-			CabRequests: elev.RequestMatrix.CabRequests,
+			statesMap[strconv.Itoa(id)] = HRAElevState{
+				Behavior:    stateString,
+				Floor:       elev.CurrentFloor,
+				Direction:   dirString,
+				CabRequests: elev.RequestMatrix.CabRequests,
+			}
 		}
 	}
 
@@ -54,34 +56,29 @@ func HRARun(st *state.Store) (map[string][][2]bool, error) {
 		States:       statesMap,
 	}
 
-	PrintHRAInput(input)
+	//PrintHRAInput(input)
 	jsonBytes, err := json.Marshal(input)
 	if err != nil {
-		return nil, fmt.Errorf("json.Marshal error: %v", err)
+		return nil, input, fmt.Errorf("json.Marshal error: %v", err)
 	}
 
 	ret, err := exec.Command("../"+hraExecutable, "-i", string(jsonBytes)).CombinedOutput()
 	if err != nil {
-		return nil, fmt.Errorf("exec.Command error: %v, output: %s", err, ret)
+		return nil, input, fmt.Errorf("exec.Command error: %v, output: %s", err, ret)
 	}
-	
+
 	output := make(map[string][][2]bool)
 	err = json.Unmarshal(ret, &output)
 	if err != nil {
-		return nil, fmt.Errorf("json.Unmarshal error: %v", err)
+		return nil, input, fmt.Errorf("json.Unmarshal error: %v", err)
 	}
 
 	// Optionally, print the output
 
-	fmt.Println("Master sending the output:")
-	for k, v := range output {
-		fmt.Printf("%6v : %+v\n", k, v)
-	}
-
-	return output, nil
+	return output, input, nil
 }
 
-func directionIntToString(dir int) string {
+func DirectionIntToString(dir int) string {
 	switch dir {
 	case 0:
 		return "stop"
@@ -94,7 +91,7 @@ func directionIntToString(dir int) string {
 	}
 }
 
-func stateIntToString(state int) string {
+func StateIntToString(state int) string {
 	switch state {
 	case 0:
 		return "idle"

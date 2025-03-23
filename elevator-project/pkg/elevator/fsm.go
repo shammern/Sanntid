@@ -1,10 +1,10 @@
 package elevator
 
 import (
+	RM "elevator-project/pkg/RequestMatrix"
 	"elevator-project/pkg/config"
 	"elevator-project/pkg/drivers"
 	"elevator-project/pkg/message"
-	"elevator-project/pkg/orders"
 	"elevator-project/pkg/state"
 	"fmt"
 	"time"
@@ -51,15 +51,16 @@ type Elevator struct {
 	state           ElevatorState
 	currentFloor    int
 	travelDirection Direction
-	RequestMatrix   *orders.RequestMatrix //should change the variable name to requestMatrix
+	RequestMatrix   *RM.RequestMatrix
 	Orders          chan Order
 	fsmEvents       chan FsmEvent
 	doorTimer       *time.Timer
 	msgTx           chan message.Message
+	ackTrackerChan  chan *message.AckTracker
 	counter         *message.MsgID
 }
 
-func NewElevator(ElevatorID int, msgTx chan message.Message, counter *message.MsgID) *Elevator {
+func NewElevator(ElevatorID int, msgTx chan message.Message, counter *message.MsgID, trackerChan chan *message.AckTracker) *Elevator {
 	drivers.SetMotorDirection(drivers.MD_Up)
 	foundFloorChan := make(chan int)
 
@@ -84,12 +85,13 @@ func NewElevator(ElevatorID int, msgTx chan message.Message, counter *message.Ms
 		ElevatorID:      ElevatorID,
 		state:           Init,
 		currentFloor:    validFloor,
-		RequestMatrix:   orders.NewRequestMatrix(config.NumFloors),
+		RequestMatrix:   RM.NewRequestMatrix(config.NumFloors),
 		Orders:          make(chan Order, 10),
 		fsmEvents:       make(chan FsmEvent, 10),
 		msgTx:           msgTx,
 		counter:         counter,
 		travelDirection: Stop,
+		ackTrackerChan:  trackerChan,
 	}
 }
 
@@ -113,11 +115,11 @@ func (e *Elevator) Run() {
 				if newDirection != e.travelDirection {
 					switch newDirection {
 					case Up:
-						drivers.SetMotorDirection(drivers.MD_Up)
+						e.transitionTo(MovingUp)
 					case Down:
-						drivers.SetMotorDirection(drivers.MD_Down)
+						e.transitionTo(MovingDown)
 					case Stop:
-						drivers.SetMotorDirection(drivers.MD_Stop)
+						e.transitionTo(Idle)
 					}
 
 					e.travelDirection = newDirection
@@ -169,7 +171,7 @@ func (e *Elevator) handleFSMEvent(ev FsmEvent) {
 			return
 		}
 		if e.shouldStop() {
-			e.clearHallReqsAtFloor()
+			go e.clearHallReqsAtFloor()
 			drivers.SetMotorDirection(drivers.MD_Stop)
 			drivers.SetDoorOpenLamp(true)
 			e.transitionTo(DoorOpen)
@@ -210,6 +212,7 @@ func (e *Elevator) transitionTo(newState ElevatorState) {
 	case Init:
 		fmt.Println("[ElevatorFSM] State = Init")
 	case Idle:
+		e.travelDirection = Stop
 		fmt.Println("[ElevatorFSM] State = Idle")
 	case DoorOpen:
 		fmt.Println("[ElevatorFSM] State = DoorOpen")
@@ -223,9 +226,11 @@ func (e *Elevator) transitionTo(newState ElevatorState) {
 		}
 		fmt.Println("[ElevatorFSM] State = DoorObstructed")
 	case MovingUp:
+		e.travelDirection = Up
 		fmt.Println("[ElevatorFSM] State = MovingUp")
 		drivers.SetMotorDirection(drivers.MD_Up)
 	case MovingDown:
+		e.travelDirection = Down
 		fmt.Println("[ElevatorFSM] State = MovingDown")
 		drivers.SetMotorDirection(drivers.MD_Down)
 	case Error:
@@ -239,7 +244,11 @@ func (e *Elevator) UpdateElevatorState(ev FsmEvent) {
 }
 
 func (e *Elevator) GetStatus() state.ElevatorStatus {
-	var reqMatrix orders.RequestMatrix
+	var reqMatrix RM.RequestMatrix
+	available := true
+	if e.state == Error {
+		available = false
+	}
 	if e.RequestMatrix != nil {
 		reqMatrix = *e.RequestMatrix
 	}
@@ -248,12 +257,13 @@ func (e *Elevator) GetStatus() state.ElevatorStatus {
 		State:           int(e.state), //cant export state, look into this later
 		CurrentFloor:    e.currentFloor,
 		TravelDirection: int(e.travelDirection),
-		LastUpdated:     time.Now(), // or use a stored timestamp if you maintain one
+		LastUpdated:     time.Now(),
 		RequestMatrix:   reqMatrix,
+		Available:       available,
 	}
 }
 
-func (e *Elevator) GetRequestMatrix() *orders.RequestMatrix {
+func (e *Elevator) GetRequestMatrix() *RM.RequestMatrix {
 	return e.RequestMatrix
 }
 

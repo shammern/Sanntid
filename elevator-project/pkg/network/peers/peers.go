@@ -1,10 +1,13 @@
 package peers
 
 import (
+	"elevator-project/pkg/config"
 	"elevator-project/pkg/network/conn"
+	"elevator-project/pkg/state"
 	"fmt"
 	"net"
 	"sort"
+	"strconv"
 	"time"
 )
 
@@ -13,6 +16,8 @@ type PeerUpdate struct {
 	New   string
 	Lost  []string
 }
+
+var LatestPeerUpdate PeerUpdate
 
 const interval = 15 * time.Millisecond
 const timeout = 500 * time.Millisecond
@@ -83,5 +88,49 @@ func Receiver(port int, peerUpdateCh chan<- PeerUpdate) {
 			sort.Strings(p.Lost)
 			peerUpdateCh <- p
 		}
+	}
+}
+
+func P2Pmonitor(stateStore *state.Store) {
+	// This function triggers events when elevators join or leave the network.
+	peerUpdateCh := make(chan PeerUpdate)
+	peerTxEnable := make(chan bool)
+	go Transmitter(config.P2Pport, strconv.Itoa(config.ElevatorID), peerTxEnable)
+	go Receiver(config.P2Pport, peerUpdateCh)
+
+	for {
+		update := <-peerUpdateCh
+		LatestPeerUpdate = update
+		fmt.Printf("Peer update:\n")
+		fmt.Printf("  Peers:    %q\n", update.Peers)
+		fmt.Printf("  New:      %q\n", update.New)
+		fmt.Printf("  Lost:     %q\n", update.Lost)
+
+		// Mark all peers in the Peers list as available.
+		for _, peerStr := range update.Peers {
+			if peerID, err := strconv.Atoi(peerStr); err == nil {
+				stateStore.UpdateElevatorAvailability(peerID, true)
+				fmt.Printf("Marked elevator %d as available\n", peerID)
+			} else {
+				fmt.Printf("Error parsing peer id %s: %v\n", peerStr, err)
+			}
+		}
+
+		// Mark lost peers as unavailable, but skip our own elevator id.
+		for _, lostPeer := range update.Lost {
+			// Skip if the lost peer is the local elevator.
+			if lostPeer == strconv.Itoa(config.ElevatorID) {
+				continue
+			}
+			if peerID, err := strconv.Atoi(lostPeer); err == nil {
+				stateStore.UpdateElevatorAvailability(peerID, false)
+				fmt.Printf("Marked elevator %d as unavailable\n", peerID)
+			} else {
+				fmt.Printf("Error parsing lost peer id %s: %v\n", lostPeer, err)
+			}
+		}
+
+		// Ensure our own elevator is always marked as available.
+		stateStore.UpdateElevatorAvailability(config.ElevatorID, true)
 	}
 }

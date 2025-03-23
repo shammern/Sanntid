@@ -1,18 +1,22 @@
-Workplan:
-    - Network Module / communication framework -> first stage
-        Goals:  get three elevators connected together using UDP, both receiving and sending should be possible
-                P2P network working and stable
-    - Synchronization mechanism -> second stage
+TODO:
+    - Synchronization mechanism
         Goals:  Enable a fault proof, shared and synced world veiw (Sverres remark on our prelim is how this is going to work)
-                Have a working JSON message for worldview and other messagetypes
                 Sequence number 
                 Regular broadcast
                 Gap detection
+                Ack: Implement Ack on msgType: ButtonEvent, OrderDelegation, ClearOrder
+                    -OrderDelegation: Master need to keep track of whick of the elevators that has sent an ack. How shoud this be done? 
+                    -ClearOrder: Multiple order might be cleared at the same time (cab + hallup), how can we send and monitor for ack on multiple messages at the same time?
                 
-    - Cost function / order delegation between elevators -> second stage
-        Goals: properly distribute orders to the optimal elevator
-    - Master delegation -> third stage
+    - Master delegation
         Goals: a new master is delegated when the master malfunctions
     - Fault handlig (watchdog, hearbeat, packetloss) -> fourth stage
         Goals: System is robust against packetloss and other malfunctions
                 working ack message for hearbeat
+
+BUGS:
+    - Elevator always enters DoorOpen state after init. 
+    - Prints state = idle twice when entering idlestate
+
+Thoughs: 
+   
