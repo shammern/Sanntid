@@ -93,7 +93,7 @@ func GetActiveElevators() []int {
 
 func PrintAckTracker(a message.AckTracker) {
 	fmt.Println("AckTracker Details:")
-	fmt.Printf("  MsgID: %d\n", a.MsgID)
+	fmt.Printf("  MsgID: %s\n", a.MsgID)
 	fmt.Printf("  SentTime: %v\n", a.SentTime)
 	fmt.Println("  ExpectedAcks:")
 	for id, acked := range a.ExpectedAcks {

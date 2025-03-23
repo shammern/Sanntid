@@ -9,6 +9,7 @@ import (
 	"elevator-project/pkg/message"
 	"elevator-project/pkg/network/bcast"
 	"elevator-project/pkg/network/peers"
+	"elevator-project/pkg/state"
 	"flag"
 	"fmt"
 )
@@ -17,7 +18,7 @@ func main() {
 	flag.IntVar(&config.ElevatorID, "id", 0, "ElevatorID")
 	flag.Parse()
 
-	var msgIDcounter message.MsgID
+	msgCounter := message.NewMsgId()
 
 	drivers.Init(config.ElevatorAddresses[config.ElevatorID], config.NumFloors)
 
@@ -29,19 +30,20 @@ func main() {
 	go bcast.Receiver(config.BCport, msgRx)
 
 	ackMonitor := message.NewAckMonitor(ackTrackerChan, ackChan)
-	elevator := elevator.NewElevator(config.ElevatorID, msgTx, &msgIDcounter, ackTrackerChan)
+	elevator := elevator.NewElevator(config.ElevatorID, msgTx, msgCounter, ackTrackerChan)
 	go app.MessageHandler(msgRx, ackChan, msgTx, elevator, ackTrackerChan)
 	//go app.StartHeartbeatBC(msgTx)
 	go elevator.Run()
 	go app.MonitorSystemInputs(elevator)
-	go peers.P2Pmonitor()
-	go app.StartWorldviewBC(elevator, msgTx, &msgIDcounter)
+	go peers.P2Pmonitor(state.MasterStateStore)
+	go app.StartWorldviewBC(elevator, msgTx, msgCounter)
 	go ackMonitor.RunAckMonitor()
-	go app.HRALoop(elevator, msgTx, ackTrackerChan)
+	go app.HRALoop(elevator, msgTx, ackTrackerChan, msgCounter)
+	//go app.DebugPrintStateStore()
 
 	//TODO: implement this in a better way, where it ask the network whos the main, and alternativly promotes itself.
 	if config.ElevatorID == 1 {
-		app.IsMaster = true
+		config.IsMaster = true
 		fmt.Println("Elevator initated as master")
 	}
 

@@ -10,11 +10,13 @@ import (
 	"time"
 )
 
+var MasterStateStore = NewStore()
+
 // ElevatorStatus holds information about an elevator.
 type ElevatorStatus struct {
 	ElevatorID      int
 	State           int
-	Direction       int // Should be changed to driver.MD?
+	Available       bool
 	CurrentFloor    int
 	TravelDirection int
 	LastUpdated     time.Time
@@ -79,18 +81,19 @@ func (s *Store) GetAll() map[int]ElevatorStatus {
 	return copy
 }
 
-// SetHallLight sets the request for a specific floor and button for the current elevator.
+// SetHallRequest sets the request for a specific floor and button for the current elevator.
 func (s *Store) SetHallRequest(button drivers.ButtonEvent) error {
 	//TODO: Add fault check if trying to set a cab button
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if button.Floor < 0 || button.Floor >= len(s.HallRequests) {
-		return fmt.Errorf("floor index %d out of bounds", button.Floor)
+	if button.Button != drivers.BT_Cab {
+		if button.Floor < 0 || button.Floor >= len(s.HallRequests) {
+			return fmt.Errorf("floor index %d out of bounds", button.Floor)
+		}
+
+		s.HallRequests[button.Floor][int(button.Button)] = true
 	}
-
-	s.HallRequests[button.Floor][int(button.Button)] = true
-
 	return nil
 }
 
@@ -125,13 +128,13 @@ func (s *Store) ClearOrder(button drivers.ButtonEvent, elevatorID int) error {
 	case drivers.BT_Cab:
 		s.Elevators[elevatorID].RequestMatrix.CabRequests[button.Floor] = false
 
-	case drivers.BT_HallUp:
+	case drivers.BT_HallUp, drivers.MD_Down:
 		s.Elevators[elevatorID].RequestMatrix.HallRequests[button.Floor][0] = false
 		s.HallRequests[button.Floor][int(button.Button)] = false
 
-	case drivers.BT_HallDown:
-		s.Elevators[elevatorID].RequestMatrix.HallRequests[button.Floor][0] = false
-		s.HallRequests[button.Floor][int(button.Button)] = false
+		//case drivers.BT_HallDown:
+		//	s.Elevators[elevatorID].RequestMatrix.HallRequests[button.Floor][0] = false
+		//	s.HallRequests[button.Floor][int(button.Button)] = false
 
 	}
 
@@ -150,4 +153,13 @@ func (s *Store) SetAllHallRequest(matrix [][2]bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.HallRequests = matrix
+}
+
+func (s *Store) UpdateElevatorAvailability(elevatorID int, newState bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	status := s.Elevators[elevatorID]
+	status.Available = newState
+	s.Elevators[elevatorID] = status
 }

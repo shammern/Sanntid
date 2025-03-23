@@ -4,32 +4,47 @@ import (
 	"elevator-project/pkg/config"
 	"elevator-project/pkg/drivers"
 	"elevator-project/pkg/message"
+	"elevator-project/pkg/state"
 	"elevator-project/pkg/utils"
-
 	"fmt"
 	"time"
 )
 
-// Broadcasts a message on the network until master acks the message. Sends either a buttonEvent og OrderCompleted msg type
+// NotifyMaster sends a message to the master elevator.
+// If the current instance is the master, it updates the MasterStore directly.
 func (e *Elevator) NotifyMaster(msgType message.MessageType, event drivers.ButtonEvent) {
-	fmt.Printf("[ElevatorTransceiver] Sending messagetype: %s, Floor: %d, Button: %s\n",
+	// If we are running as master, update the MasterStore directly
+	if config.IsMaster {
+		fmt.Printf("[ElevatorTransceiver] Master handling local update for message type: %s, Floor: %d, Button: %s\n",
+			utils.MessageTypeToString(msgType), event.Floor, utils.ButtonTypeToString(event.Button))
+
+		if msgType == message.CompletedOrder {
+			// Clear the order from the MasterStore.
+			state.MasterStateStore.ClearOrder(event, config.ElevatorID)
+			state.MasterStateStore.ClearHallRequest(event)
+
+		}
+	}
+
+	// Non-master behavior: prepare and broadcast the message over the network.
+	fmt.Printf("[ElevatorTransceiver] Sending message type: %s, Floor: %d, Button: %s\n",
 		utils.MessageTypeToString(msgType), event.Floor, utils.ButtonTypeToString(event.Button))
 
 	msg := message.Message{
 		Type:        msgType,
-		ElevatorID:  e.ElevatorID,
+		ElevatorID:  config.ElevatorID,
 		MsgID:       e.counter.Next(),
 		ButtonEvent: event,
 	}
 
+	// For hall events, broadcast until all ACKs are received.
 	if event.Button != drivers.BT_Cab {
-
 		expected := utils.GetActiveElevators()
 		tracker := message.NewAckTracker(msg.MsgID, expected)
 
 		tracker.ExpectedAcks[config.ElevatorID] = true
 
-		// Register the tracker in the global outstandingAcks.
+		// Register the tracker in the outstanding acks channel.
 		e.ackTrackerChan <- tracker
 
 		ticker := time.NewTicker(config.ResendInterval)
@@ -38,8 +53,7 @@ func (e *Elevator) NotifyMaster(msgType message.MessageType, event drivers.Butto
 		for {
 			select {
 			case <-tracker.Done:
-				fmt.Printf("[ElevatorTransceiver] All acks received for MsgID: %d, stopping broadcast to master\n", tracker.MsgID)
-				//TODO: Delete tracker
+				fmt.Printf("[ElevatorTransceiver] All ACKs received for MsgID: %s, stopping broadcast to master\n", tracker.MsgID)
 				return
 			case <-ticker.C:
 				e.msgTx <- msg
@@ -47,5 +61,6 @@ func (e *Elevator) NotifyMaster(msgType message.MessageType, event drivers.Butto
 		}
 	}
 
+	// For cab button events, simply send the message.
 	e.msgTx <- msg
 }

@@ -27,3 +27,4 @@ var WorldviewBCInterval = 100 * time.Millisecond
 var ResendInterval = 10 * time.Millisecond
 var BCport = 15500
 var P2Pport = 16000
+var IsMaster = false

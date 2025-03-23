@@ -13,10 +13,7 @@ import (
 	"time"
 )
 
-var IsMaster bool = false
 var CurrentMasterID int = 1
-var MasterStateStore = state.NewStore()
-var msgID = &message.MsgID{}
 
 func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, msgTx chan message.Message, elevatorFSM *elevator.Elevator, trackerChan chan *message.AckTracker) {
 	for msg := range msgRx {
@@ -36,59 +33,60 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 					elevatorFSM.Orders <- event
 				}
 
-				MasterStateStore.SetAllHallRequest(msg.HallRequests)
-				elevatorFSM.SetHallLigths(MasterStateStore.HallRequests)
+				state.MasterStateStore.SetAllHallRequest(msg.HallRequests)
+				elevatorFSM.SetHallLigths(state.MasterStateStore.HallRequests)
 
 				SendAck(msg, msgTx)
 
 			case message.CompletedOrder:
 				//TODO: Notify
-				//fmt.Printf("[MH] Order has been completed: ElevatorID: %d, Floor: %d, ButtonType: %s\n", msg.ElevatorID, msg.ButtonEvent.Floor, utils.ButtonTypeToString(msg.ButtonEvent.Button))
-				MasterStateStore.ClearOrder(msg.ButtonEvent, msg.ElevatorID)
-				MasterStateStore.ClearHallRequest(msg.ButtonEvent)
-				elevatorFSM.SetHallLigths(MasterStateStore.HallRequests)
+				fmt.Printf("[MH] Order has been completed: ElevatorID: %d, Floor: %d, ButtonType: %s\n", msg.ElevatorID, msg.ButtonEvent.Floor, utils.ButtonTypeToString(msg.ButtonEvent.Button))
+				state.MasterStateStore.ClearOrder(msg.ButtonEvent, msg.ElevatorID)
+				state.MasterStateStore.ClearHallRequest(msg.ButtonEvent)
+				elevatorFSM.SetHallLigths(state.MasterStateStore.HallRequests)
 				SendAck(msg, msgTx)
 
 			case message.ButtonEvent:
 
-				if IsMaster {
+				if config.IsMaster {
 					switch msg.ButtonEvent.Button {
 					case drivers.BT_HallDown, drivers.BT_HallUp:
-						if !MasterStateStore.GetHallOrders()[msg.ButtonEvent.Floor][int(msg.ButtonEvent.Button)] {
-							MasterStateStore.SetHallRequest(msg.ButtonEvent)
+						if !state.MasterStateStore.GetHallOrders()[msg.ButtonEvent.Floor][int(msg.ButtonEvent.Button)] {
+							state.MasterStateStore.SetHallRequest(msg.ButtonEvent)
 						}
 
 					case drivers.BT_Cab:
-						if !MasterStateStore.Elevators[msg.ElevatorID].RequestMatrix.CabRequests[msg.ButtonEvent.Floor] {
-							MasterStateStore.Elevators[msg.ElevatorID].RequestMatrix.CabRequests[msg.ButtonEvent.Floor] = true
+						if !state.MasterStateStore.Elevators[msg.ElevatorID].RequestMatrix.CabRequests[msg.ButtonEvent.Floor] {
+							state.MasterStateStore.Elevators[msg.ElevatorID].RequestMatrix.CabRequests[msg.ButtonEvent.Floor] = true
 						}
 					}
-					SendAck(msg, msgTx)
+					//SendAck(msg, msgTx)
 				}
+				SendAck(msg, msgTx)
 
 			case message.Heartbeat:
-				MasterStateStore.UpdateHeartbeat(msg.ElevatorID)
+				state.MasterStateStore.UpdateHeartbeat(msg.ElevatorID)
 
 			case message.State:
 				status := state.ElevatorStatus{
 					ElevatorID:      msg.ElevatorID,
 					State:           msg.StateData.State,
-					Direction:       msg.StateData.Direction,
 					CurrentFloor:    msg.StateData.CurrentFloor,
 					TravelDirection: msg.StateData.TravelDirection,
 					RequestMatrix:   msg.StateData.RequestMatrix,
 					LastUpdated:     msg.StateData.LastUpdated,
+					Available:       msg.StateData.Available,
 				}
-				MasterStateStore.UpdateStatus(status)
+				state.MasterStateStore.UpdateStatus(status)
 
 			case message.MasterSlaveConfig:
 				// Update our view of the current master.
 				fmt.Printf("[MH] Received master config update: new master is elevator %d\n", msg.ElevatorID)
 				CurrentMasterID = msg.ElevatorID
 				if config.ElevatorID != msg.ElevatorID {
-					IsMaster = false
+					config.IsMaster = false
 				} else {
-					IsMaster = true
+					config.IsMaster = true
 				}
 
 			default:
@@ -105,7 +103,6 @@ func StartHeartbeatBC(msgTx chan message.Message) {
 		hbMsg := message.Message{
 			Type:       message.Heartbeat,
 			ElevatorID: config.ElevatorID,
-			MsgID:      msgID.Next(),
 		}
 		msgTx <- hbMsg
 	}
@@ -117,15 +114,15 @@ func StartWorldviewBC(e *elevator.Elevator, msgTx chan message.Message, counter 
 
 	for range ticker.C {
 		status := e.GetStatus()
-		MasterStateStore.UpdateStatus(status)
+		state.MasterStateStore.UpdateStatus(status)
 		stateMsg := message.Message{
-			Type:       message.State,
-			ElevatorID: status.ElevatorID,
-			//MsgID:        counter.Next(),
-			HallRequests: MasterStateStore.HallRequests,
+			Type:         message.State,
+			ElevatorID:   status.ElevatorID,
+			HallRequests: state.MasterStateStore.HallRequests,
 			StateData: &message.ElevatorState{
 				ElevatorID:      status.ElevatorID,
 				State:           status.State,
+				Available:       status.Available,
 				CurrentFloor:    status.CurrentFloor,
 				TravelDirection: status.TravelDirection,
 				LastUpdated:     time.Now(),
@@ -142,14 +139,14 @@ func DebugPrintStateStore() {
 	defer ticker.Stop()
 	for range ticker.C {
 		fmt.Println("----- Current Elevator States -----")
-		statuses := MasterStateStore.GetAll()
+		statuses := state.MasterStateStore.GetAll()
 		for id, status := range statuses {
 			fmt.Printf("Elevator %d:\n", id)
 			fmt.Printf("  ElevatorID   : %d\n", status.ElevatorID)
-			fmt.Printf("  State        : %d\n", status.State)
-			fmt.Printf("  Direction    : %d\n", status.Direction)
+			fmt.Printf("  State        : %s\n", HRA.StateIntToString(status.State))
+			fmt.Printf("  Available        : %t\n", status.Available)
 			fmt.Printf("  CurrentFloor : %d\n", status.CurrentFloor)
-			fmt.Printf("  TravelingDirection  : %d\n", status.TravelDirection)
+			fmt.Printf("  TravelingDirection  : %s\n", HRA.DirectionIntToString(status.TravelDirection))
 			fmt.Printf("  LastUpdated  : %v\n", status.LastUpdated.Format("15:04:05"))
 			fmt.Printf("  HallRequests : %+v\n", status.RequestMatrix.HallRequests)
 			fmt.Printf("  CabRequests  : %+v\n", status.RequestMatrix.CabRequests)
@@ -174,8 +171,8 @@ func MonitorSystemInputs(elevatorFSM *elevator.Elevator) {
 		select {
 		case be := <-drvButtons:
 
-			if IsMaster {
-				MasterStateStore.SetHallRequest(be)
+			if config.IsMaster {
+				state.MasterStateStore.SetHallRequest(be)
 			} else {
 				elevatorFSM.NotifyMaster(message.ButtonEvent, be)
 			}
@@ -208,7 +205,7 @@ func MonitorSystemInputs(elevatorFSM *elevator.Elevator) {
 }
 
 func SendAck(msg message.Message, msgTx chan message.Message) {
-	fmt.Printf("[MH] Message received from elevatorID: %d:\n\tType: %s, msgID: %d, sending ack\n", msg.ElevatorID, utils.MessageTypeToString(msg.Type), msg.MsgID)
+	fmt.Printf("[MH] Message received from elevatorID: %d:\n\tType: %s, msgID: %s, sending ack\n", msg.ElevatorID, utils.MessageTypeToString(msg.Type), msg.MsgID)
 
 	ackMsg := message.Message{
 		Type:       message.Ack,
@@ -220,7 +217,7 @@ func SendAck(msg message.Message, msgTx chan message.Message) {
 	msgTx <- ackMsg
 }
 
-func SendOrder(newOrder map[string][][2]bool, msgTx chan message.Message, trackChan chan *message.AckTracker) {
+func SendOrder(newOrder map[string][][2]bool, msgTx chan message.Message, trackChan chan *message.AckTracker, msgID *message.MsgID) {
 	currentMsgID := msgID.Get()
 	tracker := message.NewAckTracker(currentMsgID, utils.GetActiveElevators())
 
@@ -238,14 +235,14 @@ func SendOrder(newOrder map[string][][2]bool, msgTx chan message.Message, trackC
 		ElevatorID:   config.ElevatorID,
 		MsgID:        msgID.Next(),
 		OrderData:    newOrder,
-		HallRequests: MasterStateStore.HallRequests,
+		HallRequests: state.MasterStateStore.HallRequests,
 	}
 
 	for {
 
 		select {
 		case <-tracker.Done:
-			fmt.Printf("[MH: Master] All acks received for MsgID: %d, stopping order broadcast\n", tracker.MsgID)
+			fmt.Printf("[MH: Master] All acks received for MsgID: %s, stopping order broadcast\n", tracker.MsgID)
 			//delete(outstandingAcks, orderMsg.MsgID)
 			//TODO: Should delete tracker
 
@@ -257,26 +254,26 @@ func SendOrder(newOrder map[string][][2]bool, msgTx chan message.Message, trackC
 	}
 }
 
-func HRALoop(elevatorFSM *elevator.Elevator, msgTx chan message.Message, trackerChan chan *message.AckTracker) {
+func HRALoop(elevatorFSM *elevator.Elevator, msgTx chan message.Message, trackerChan chan *message.AckTracker, msgID *message.MsgID) {
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 
 	for range ticker.C {
-		if IsMaster {
-			newOrder, input, _ := HRA.HRARun(MasterStateStore)
-			if !utils.CompareMaps(newOrder, MasterStateStore.CurrentOrders) {
+		if config.IsMaster {
+			newOrder, input, _ := HRA.HRARun(state.MasterStateStore)
+			if !utils.CompareMaps(newOrder, state.MasterStateStore.CurrentOrders) {
 				HRA.PrintHRAInput(input)
-				fmt.Println("[HRA] New orders found, sending orders")
-
-				fmt.Println("Master sending the output:")
+				fmt.Println("[HRA]Master sending the output:")
 				for k, v := range newOrder {
 					fmt.Printf("%6v : %+v\n", k, v)
 				}
 
 				// Launch the SendOrder routine (which itself uses an AckTracker)
 
-				MasterStateStore.CurrentOrders = newOrder
-				go SendOrder(newOrder, msgTx, trackerChan)
+				state.MasterStateStore.CurrentOrders = newOrder
+				elevatorFSM.SetHallLigths(state.MasterStateStore.HallRequests)
+
+				go SendOrder(newOrder, msgTx, trackerChan, msgID)
 
 				// Process the new order events.
 				events := convertOrderDataToOrders(newOrder)

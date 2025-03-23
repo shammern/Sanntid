@@ -236,6 +236,10 @@ func (e *Elevator) UpdateElevatorState(ev FsmEvent) {
 
 func (e *Elevator) GetStatus() state.ElevatorStatus {
 	var reqMatrix RM.RequestMatrix
+	available := true
+	if e.state == Error {
+		available = false
+	}
 	if e.RequestMatrix != nil {
 		reqMatrix = *e.RequestMatrix
 	}
@@ -246,6 +250,7 @@ func (e *Elevator) GetStatus() state.ElevatorStatus {
 		TravelDirection: int(e.travelDirection),
 		LastUpdated:     time.Now(),
 		RequestMatrix:   reqMatrix,
+		Available:       available,
 	}
 }
 

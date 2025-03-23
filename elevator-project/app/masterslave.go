@@ -12,7 +12,7 @@ import (
 func HandleMasterSlaveMessage(msg message.Message) {
 	fmt.Printf("Received master config update: new master is elevator %d\n", msg.ElevatorID)
 	CurrentMasterID = msg.ElevatorID
-	IsMaster = (config.ElevatorID == msg.ElevatorID)
+	config.IsMaster = (config.ElevatorID == msg.ElevatorID)
 }
 
 // Monitor master heartbeat and elect a new master if necessary
@@ -21,7 +21,7 @@ func MonitorMasterHeartbeat(peerAddrs []string) {
 	defer ticker.Stop()
 
 	for range ticker.C {
-		statuses := MasterStateStore.GetAll()
+		statuses := state.MasterStateStore.GetAll()
 		masterStatus, exists := statuses[CurrentMasterID]
 
 		if !exists || time.Since(masterStatus.LastUpdated) > 5*time.Second {
@@ -41,7 +41,7 @@ func MonitorMasterHeartbeat(peerAddrs []string) {
 
 // Promote this elevator to master
 func PromoteToMaster(peerAddrs []string) {
-	IsMaster = true
+	config.IsMaster = true
 	/*CurrentMasterID = LocalElevatorID
 	fmt.Printf("Elevator %d is now promoted to master.\n", LocalElevatorID)
 
@@ -57,28 +57,6 @@ func PromoteToMaster(peerAddrs []string) {
 		}
 	}
 	*/
-}
-
-// Monitor elevator heartbeats and reassign orders if necessary
-func MonitorElevatorHeartbeats() {
-	if !IsMaster {
-		return
-	}
-	ticker := time.NewTicker(500 * time.Millisecond)
-	defer ticker.Stop()
-
-	for range ticker.C {
-		statuses := MasterStateStore.GetAll()
-		for id, status := range statuses {
-			if id == config.ElevatorID {
-				continue
-			}
-			if time.Since(status.LastUpdated) > 5*time.Second {
-				fmt.Printf("Elevator %d heartbeat stale. Reassigning its orders.\n", id)
-				ReassignOrders(status)
-			}
-		}
-	}
 }
 
 // Reassign orders from a failed elevator to active elevators

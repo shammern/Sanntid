@@ -36,16 +36,18 @@ func HRARun(st *state.Store) (map[string][][2]bool, HRAInput, error) {
 
 	statesMap := make(map[string]HRAElevState)
 	for id, elev := range allElevators {
+		if elev.Available {
 
-		dirString := directionIntToString(elev.Direction)
+			dirString := DirectionIntToString(elev.TravelDirection)
 
-		stateString := stateIntToString(elev.State)
+			stateString := StateIntToString(elev.State)
 
-		statesMap[strconv.Itoa(id)] = HRAElevState{
-			Behavior:    stateString,
-			Floor:       elev.CurrentFloor,
-			Direction:   dirString,
-			CabRequests: elev.RequestMatrix.CabRequests,
+			statesMap[strconv.Itoa(id)] = HRAElevState{
+				Behavior:    stateString,
+				Floor:       elev.CurrentFloor,
+				Direction:   dirString,
+				CabRequests: elev.RequestMatrix.CabRequests,
+			}
 		}
 	}
 
@@ -64,7 +66,7 @@ func HRARun(st *state.Store) (map[string][][2]bool, HRAInput, error) {
 	if err != nil {
 		return nil, input, fmt.Errorf("exec.Command error: %v, output: %s", err, ret)
 	}
-	
+
 	output := make(map[string][][2]bool)
 	err = json.Unmarshal(ret, &output)
 	if err != nil {
@@ -73,11 +75,10 @@ func HRARun(st *state.Store) (map[string][][2]bool, HRAInput, error) {
 
 	// Optionally, print the output
 
-
 	return output, input, nil
 }
 
-func directionIntToString(dir int) string {
+func DirectionIntToString(dir int) string {
 	switch dir {
 	case 0:
 		return "stop"
@@ -90,7 +91,7 @@ func directionIntToString(dir int) string {
 	}
 }
 
-func stateIntToString(state int) string {
+func StateIntToString(state int) string {
 	switch state {
 	case 0:
 		return "idle"
