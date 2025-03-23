@@ -13,7 +13,8 @@ import (
 type ElevatorState int
 
 const (
-	Idle ElevatorState = iota
+	Init ElevatorState = iota
+	Idle
 	MovingUp
 	MovingDown
 	DoorOpen
@@ -82,7 +83,7 @@ func NewElevator(ElevatorID int, msgTx chan message.Message, counter *message.Ms
 
 	return &Elevator{
 		ElevatorID:      ElevatorID,
-		state:           Idle,
+		state:           Init,
 		currentFloor:    validFloor,
 		RequestMatrix:   RM.NewRequestMatrix(config.NumFloors),
 		Orders:          make(chan Order, 10),
@@ -163,6 +164,12 @@ func (e *Elevator) handleFSMEvent(ev FsmEvent) {
 	case EventArrivedAtFloor:
 		e.currentFloor = drivers.GetFloor()
 		drivers.SetFloorIndicator(e.currentFloor)
+		if e.state == Init {
+			drivers.SetMotorDirection(drivers.MD_Stop)
+			drivers.SetDoorOpenLamp(false) // Sikrer at døren forblir lukket
+			e.transitionTo(Idle)
+			return
+		}
 		if e.shouldStop() {
 			go e.clearHallReqsAtFloor()
 			drivers.SetMotorDirection(drivers.MD_Stop)
@@ -202,6 +209,8 @@ func (e *Elevator) handleFSMEvent(ev FsmEvent) {
 func (e *Elevator) transitionTo(newState ElevatorState) {
 	e.state = newState
 	switch newState {
+	case Init:
+		fmt.Println("[ElevatorFSM] State = Init")
 	case Idle:
 		e.travelDirection = Stop
 		fmt.Println("[ElevatorFSM] State = Idle")

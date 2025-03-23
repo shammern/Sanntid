@@ -51,6 +51,7 @@ func NewStore() *Store {
 	}
 
 	return store
+
 }
 
 // UpdateStatus updates or adds an ElevatorStatus to the store.
@@ -163,3 +164,4 @@ func (s *Store) UpdateElevatorAvailability(elevatorID int, newState bool) {
 	status.Available = newState
 	s.Elevators[elevatorID] = status
 }
+

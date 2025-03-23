@@ -137,6 +137,7 @@ func (e *Elevator) clearHallReqsAtFloor() {
 			drivers.SetButtonLamp(drivers.BT_Cab, e.currentFloor, false)
 		}
 
+
 		if e.RequestMatrix.HallRequests[e.currentFloor][0] {
 			e.RequestMatrix.HallRequests[e.currentFloor][0] = false
 			e.NotifyMaster(message.CompletedOrder, drivers.ButtonEvent{Floor: e.currentFloor, Button: drivers.BT_HallUp})
@@ -145,6 +146,7 @@ func (e *Elevator) clearHallReqsAtFloor() {
 			e.RequestMatrix.HallRequests[e.currentFloor][1] = false
 			e.NotifyMaster(message.CompletedOrder, drivers.ButtonEvent{Floor: e.currentFloor, Button: drivers.BT_HallDown})
 			drivers.SetButtonLamp(drivers.BT_HallDown, e.currentFloor, false)
+
 		}
 	}
 }
