@@ -47,21 +47,27 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 				elevatorFSM.SetHallLigths(state.MasterStateStore.HallRequests)
 
 			case message.ButtonEvent:
-
 				if config.IsMaster {
-					fmt.Println("I'm the master, dooing stuff")
+					fmt.Printf("[MASTER] Received ButtonEvent: Elevator %d | Floor %d | Type: %v\n",
+						msg.ElevatorID, msg.ButtonEvent.Floor, msg.ButtonEvent.Button)
+
 					switch msg.ButtonEvent.Button {
-					case drivers.BT_HallDown, drivers.BT_HallUp:
-						if !state.MasterStateStore.GetHallOrders()[msg.ButtonEvent.Floor][int(msg.ButtonEvent.Button)] {
-							state.MasterStateStore.SetHallRequest(msg.ButtonEvent)
-						}
+					case drivers.BT_HallUp, drivers.BT_HallDown:
+						state.MasterStateStore.SetHallRequest(msg.ButtonEvent)
 
 					case drivers.BT_Cab:
-						if !state.MasterStateStore.Elevators[msg.ElevatorID].RequestMatrix.CabRequests[msg.ButtonEvent.Floor] {
-							state.MasterStateStore.Elevators[msg.ElevatorID].RequestMatrix.CabRequests[msg.ButtonEvent.Floor] = true
+						if elev, ok := state.MasterStateStore.GetElevator(msg.ElevatorID); ok {
+							elev.RequestMatrix.CabRequests[msg.ButtonEvent.Floor] = true
+							state.MasterStateStore.UpdateStatus(elev) // ✅ Safe write
+							fmt.Printf("[MASTER] ✅ Stored cab request: Elevator %d, Floor %d\n",
+								msg.ElevatorID, msg.ButtonEvent.Floor)
+						} else {
+							fmt.Printf("[MASTER] ⚠️ Elevator %d not found in MasterStateStore\n", msg.ElevatorID)
 						}
+
 					}
 				}
+
 				SendAck(msg, msgTx)
 
 			case message.State:
@@ -74,6 +80,15 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 					LastUpdated:     msg.StateData.LastUpdated,
 					Available:       msg.StateData.Available,
 				}
+				existingStatus, ok := state.MasterStateStore.GetElevator(msg.ElevatorID)
+				if ok {
+					for floor, storedCall := range existingStatus.RequestMatrix.CabRequests {
+						if storedCall && !status.RequestMatrix.CabRequests[floor] {
+							status.RequestMatrix.CabRequests[floor] = true
+						}
+					}
+				}
+				fmt.Printf("[MASTER DEBUG] Updated state for Elevator %d, cab calls: %v\n", msg.ElevatorID, status.RequestMatrix.CabRequests)
 				state.MasterStateStore.UpdateStatus(status)
 
 			case message.MasterQuery:
@@ -160,21 +175,26 @@ func MonitorSystemInputs(elevatorFSM *elevator.Elevator) {
 		select {
 		case be := <-drvButtons:
 
-			if config.IsMaster {
-				state.MasterStateStore.SetHallRequest(be)
-			} else {
-				elevatorFSM.NotifyMaster(message.ButtonEvent, be)
-			}
-
-			//If internal event(cab button) add order directly to request matrix
 			if be.Button == drivers.BT_Cab {
 				order := elevator.Order{
 					Event: be,
 					Flag:  true,
 				}
-
 				elevatorFSM.Orders <- order
 				drivers.SetButtonLamp(drivers.BT_Cab, be.Floor, true)
+
+				// 👇 This is the fix: tell the master!
+				if !config.IsMaster {
+					fmt.Printf("[DEBUG] Sending cab call to master: floor %d, elevator %d\n", be.Floor, config.ElevatorID)
+					elevatorFSM.NotifyMaster(message.ButtonEvent, be)
+				}
+			} else {
+				// Only hall calls here
+				if config.IsMaster {
+					state.MasterStateStore.SetHallRequest(be)
+				} else {
+					elevatorFSM.NotifyMaster(message.ButtonEvent, be)
+				}
 			}
 
 		case <-drvFloors:
@@ -286,7 +306,7 @@ func OrderSenderWorker(orderRequestCh <-chan HRA.OrderData, msgTx chan message.M
 
 				case newReq := <-orderRequestCh:
 					currentTracker.Terminate()
-			
+
 					req = newReq
 					break resendLoop
 				}

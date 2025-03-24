@@ -30,6 +30,7 @@ const (
 	EventDoorObstructed
 	EventDoorReleased
 	EventSetError
+	EventEvaluateOrders
 )
 
 type Direction int
@@ -58,6 +59,7 @@ type Elevator struct {
 	msgTx           chan message.Message
 	ackTrackerChan  chan *message.AckTracker
 	counter         *message.MsgID
+	pendingCabCalls []bool
 }
 
 func NewElevator(ElevatorID int, msgTx chan message.Message, counter *message.MsgID, trackerChan chan *message.AckTracker) *Elevator {
@@ -92,6 +94,7 @@ func NewElevator(ElevatorID int, msgTx chan message.Message, counter *message.Ms
 		counter:         counter,
 		travelDirection: Stop,
 		ackTrackerChan:  trackerChan,
+		pendingCabCalls: make([]bool, config.NumFloors), // initialize persistent store
 	}
 }
 
@@ -137,6 +140,7 @@ func (e *Elevator) handleNewOrder(newOrder Order) {
 	switch newOrder.Event.Button {
 	case drivers.BT_Cab:
 		e.RequestMatrix.CabRequests[newOrder.Event.Floor] = newOrder.Flag
+		e.pendingCabCalls[newOrder.Event.Floor] = newOrder.Flag
 
 	case drivers.BT_HallUp:
 		e.RequestMatrix.HallRequests[newOrder.Event.Floor][0] = newOrder.Flag
@@ -203,6 +207,22 @@ func (e *Elevator) handleFSMEvent(ev FsmEvent) {
 	case EventSetError:
 		e.transitionTo(Error)
 		drivers.SetMotorDirection(drivers.MD_Stop)
+
+	case EventEvaluateOrders:
+		if e.state == Idle || e.state == MovingUp || e.state == MovingDown {
+			newDirection := e.chooseDirection()
+			if newDirection != e.travelDirection {
+				switch newDirection {
+				case Up:
+					e.transitionTo(MovingUp)
+				case Down:
+					e.transitionTo(MovingDown)
+				case Stop:
+					e.transitionTo(Idle)
+				}
+				e.travelDirection = newDirection
+			}
+		}
 	}
 }
 
@@ -244,17 +264,24 @@ func (e *Elevator) UpdateElevatorState(ev FsmEvent) {
 }
 
 func (e *Elevator) GetStatus() state.ElevatorStatus {
-	var reqMatrix RM.RequestMatrix
+	// Create a merged cab calls slice.
+	mergedCabCalls := make([]bool, len(e.RequestMatrix.CabRequests))
+	for i, hwCall := range e.RequestMatrix.CabRequests {
+		mergedCabCalls[i] = hwCall || e.pendingCabCalls[i]
+	}
+	// Use mergedCabCalls in the returned RequestMatrix.
+	fmt.Printf("[DEBUG] GetStatus: mergedCabCalls: %v (hw: %v, pending: %v)\n",
+		mergedCabCalls, e.RequestMatrix.CabRequests, e.pendingCabCalls)
+	reqMatrix := *e.RequestMatrix
+	reqMatrix.CabRequests = mergedCabCalls
+
 	available := true
 	if e.state == Error {
 		available = false
 	}
-	if e.RequestMatrix != nil {
-		reqMatrix = *e.RequestMatrix
-	}
 	return state.ElevatorStatus{
 		ElevatorID:      e.ElevatorID,
-		State:           int(e.state), //cant export state, look into this later
+		State:           int(e.state),
 		CurrentFloor:    e.currentFloor,
 		TravelDirection: int(e.travelDirection),
 		LastUpdated:     time.Now(),
@@ -299,4 +326,67 @@ func (e *Elevator) PrintRequestMatrix() {
 		// hallReq[0] for the "up" button and hallReq[1] for the "down" button.
 		fmt.Printf("  Floor %d: Up: %v, Down: %v\n", floor, hallReq[0], hallReq[1])
 	}
+}
+func (e *Elevator) RestoreCabCalls(cabCalls []bool) {
+	fmt.Println("[ElevatorFSM] Restoring cab calls...")
+	hasOrders := false
+
+	for floor, active := range cabCalls {
+		if active {
+			fmt.Printf("[ElevatorFSM] Restoring cab call at floor %d\n", floor)
+			// Update both the RequestMatrix and the persistent pendingCabCalls.
+			e.RequestMatrix.CabRequests[floor] = true
+			e.pendingCabCalls[floor] = true
+			// Also send an order event to trigger FSM evaluation.
+			e.Orders <- Order{
+				Event: drivers.ButtonEvent{
+					Button: drivers.BT_Cab,
+					Floor:  floor,
+				},
+				Flag: true,
+			}
+			hasOrders = true
+		}
+	}
+
+	if hasOrders {
+		go func() {
+			time.Sleep(10 * time.Millisecond)
+			e.fsmEvents <- EventEvaluateOrders
+		}()
+		// Immediately broadcast updated state.
+		newStatus := e.GetStatus()
+		stateMsg := message.Message{
+			Type:         message.State,
+			ElevatorID:   newStatus.ElevatorID,
+			HallRequests: state.MasterStateStore.GetHallOrders(), // if needed
+			StateData: &message.ElevatorState{
+				ElevatorID:      newStatus.ElevatorID,
+				State:           newStatus.State,
+				Available:       newStatus.Available,
+				CurrentFloor:    newStatus.CurrentFloor,
+				TravelDirection: newStatus.TravelDirection,
+				LastUpdated:     time.Now(),
+				RequestMatrix:   newStatus.RequestMatrix,
+			},
+		}
+		e.msgTx <- stateMsg
+		fmt.Println("[ElevatorFSM] Sent updated state with restored cab calls to master.")
+	}
+}
+
+func ConvertCabRequestsToOrders(elevatorID int, cabCalls []bool) []Order {
+	var orders []Order
+	for floor, active := range cabCalls {
+		if active {
+			orders = append(orders, Order{
+				Event: drivers.ButtonEvent{
+					Button: drivers.BT_Cab,
+					Floor:  floor,
+				},
+				Flag: true,
+			})
+		}
+	}
+	return orders
 }

@@ -12,6 +12,8 @@ import (
 	"elevator-project/pkg/network/peers"
 	"elevator-project/pkg/state"
 	"flag"
+	"fmt"
+	"time"
 )
 
 func main() {
@@ -33,8 +35,26 @@ func main() {
 
 	ackMonitor := message.NewAckMonitor(ackTrackerChan, ackChan)
 	elevator := elevator.NewElevator(config.ElevatorID, msgTx, msgCounter, ackTrackerChan)
-
 	go elevator.Run()
+
+	go func() {
+		for {
+			time.Sleep(500 * time.Millisecond)
+			if config.IsMaster {
+				continue // Master shouldn't wait for its own state
+			}
+			elev, ok := state.MasterStateStore.GetElevator(config.ElevatorID)
+			if ok {
+				if hasCabCalls(elev.RequestMatrix.CabRequests) {
+					fmt.Printf("[DEBUG] Master has stored cab calls for me (Elevator %d): %v\n", config.ElevatorID, elev.RequestMatrix.CabRequests)
+					elevator.RestoreCabCalls(elev.RequestMatrix.CabRequests)
+					break
+				} else {
+					fmt.Printf("[DEBUG] Elevator %d state found but no cab calls yet...\n", config.ElevatorID)
+				}
+			}
+		}
+	}()
 	go ackMonitor.RunAckMonitor()
 
 	go app.MessageHandler(msgRx, ackChan, msgTx, elevator, ackTrackerChan)
@@ -47,4 +67,13 @@ func main() {
 	go app.MonitorMasterHeartbeat(state.MasterStateStore, msgTx)
 
 	select {}
+}
+
+func hasCabCalls(cabs []bool) bool {
+	for _, v := range cabs {
+		if v {
+			return true
+		}
+	}
+	return false
 }

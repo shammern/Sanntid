@@ -151,3 +151,9 @@ func (s *Store) UpdateElevatorAvailability(elevatorID int, newState bool) {
 	s.Elevators[elevatorID] = status
 }
 
+func (s *Store) GetElevator(id int) (ElevatorStatus, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	elev, ok := s.Elevators[id]
+	return elev, ok
+}

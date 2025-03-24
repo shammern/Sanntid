@@ -31,24 +31,14 @@ type OrderData struct {
 }
 
 func HRARun(st *state.Store) (map[string][][2]bool, HRAInput, error) {
-	hraExecutable := ""
-	switch runtime.GOOS {
-	case "linux":
-		hraExecutable = "hall_request_assigner"
-	case "windows":
-		hraExecutable = "hall_request_assigner.exe"
-	default:
-		panic("OS not supported")
-	}
+	var cmd *exec.Cmd
 
 	allElevators := st.GetAll()
-
 	statesMap := make(map[string]HRAElevState)
+
 	for id, elev := range allElevators {
 		if elev.Available {
-
 			dirString := DirectionIntToString(elev.TravelDirection)
-
 			stateString := StateIntToString(elev.State)
 
 			statesMap[strconv.Itoa(id)] = HRAElevState{
@@ -65,24 +55,45 @@ func HRARun(st *state.Store) (map[string][][2]bool, HRAInput, error) {
 		States:       statesMap,
 	}
 
-	//PrintHRAInput(input)
 	jsonBytes, err := json.Marshal(input)
 	if err != nil {
 		return nil, input, fmt.Errorf("json.Marshal error: %v", err)
 	}
 
-	ret, err := exec.Command("../"+hraExecutable, "-i", string(jsonBytes)).CombinedOutput()
-	if err != nil {
-		return nil, input, fmt.Errorf("exec.Command error: %v, output: %s", err, ret)
+	// Choose command based on OS
+	switch runtime.GOOS {
+	case "linux":
+		cmd = exec.Command("../hall_request_assigner", "-i", string(jsonBytes))
+	case "windows":
+		cmd = exec.Command("../hall_request_assigner.exe", "-i", string(jsonBytes))
+	case "darwin":
+		cmd = exec.Command("wine", "../hall_request_assigner.exe", "-i", string(jsonBytes))
+	default:
+		return nil, input, fmt.Errorf("unsupported OS: %s", runtime.GOOS)
 	}
 
+	ret, err := cmd.CombinedOutput()
+	rawOutput := string(ret)
+
+	// Extract JSON portion from output
+	jsonStart := -1
+	for i, ch := range rawOutput {
+		if ch == '{' {
+			jsonStart = i
+			break
+		}
+	}
+	if jsonStart == -1 {
+		return nil, input, fmt.Errorf("no JSON object found in output: %s", rawOutput)
+	}
+
+	cleanJSON := rawOutput[jsonStart:]
+
 	output := make(map[string][][2]bool)
-	err = json.Unmarshal(ret, &output)
+	err = json.Unmarshal([]byte(cleanJSON), &output)
 	if err != nil {
 		return nil, input, fmt.Errorf("json.Unmarshal error: %v", err)
 	}
-
-	// Optionally, print the output
 
 	return output, input, nil
 }
