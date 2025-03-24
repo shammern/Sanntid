@@ -10,13 +10,21 @@ TODO:
                 
     - Master delegation
         Goals: a new master is delegated when the master malfunctions
-    - Fault handlig (watchdog, hearbeat, packetloss) -> fourth stage
+    - Fault handlig (watchdog, packetloss) -> fourth stage
         Goals: System is robust against packetloss and other malfunctions
                 working ack message for hearbeat
+    
 
 BUGS:
-    - Elevator always enters DoorOpen state after init. 
-    - Prints state = idle twice when entering idlestate
+    - 
 
 Thoughs: 
+
+
+Plan:
+    - Check packetloss: Sigve
+    - Master doen't change unneccesary: Selma
+    - Internal elevator errorstate: Door open too long, stoppes betwhen floors, too long time betwhen floors etc
+    - If an elevator enters errorstate (powerloss etc) it need's to get caborders back when it exits errorstate: Wei
+
    

@@ -129,18 +129,6 @@ func P2Pmonitor(stateStore *state.Store, msgTx chan message.Message) {
 			} else {
 				fmt.Printf("Error parsing lost peer id %s: %v\n", lostPeer, err)
 			}
-
-		}
-
-		if len(update.New) > 0 {
-			fmt.Printf("[INFO] Ny heis oppdaget: %q. Spør etter master...\n", update.New)
-
-			queryMsg := message.Message{
-				Type:       message.MasterQuery,
-				ElevatorID: 0, //Asking for the master
-			}
-			msgTx <- queryMsg
-
 		}
 
 		// Ensure our own elevator is always marked as available.

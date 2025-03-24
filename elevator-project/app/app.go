@@ -41,15 +41,16 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 
 			case message.CompletedOrder:
 				//TODO: Notify
+				SendAck(msg, msgTx)
 				fmt.Printf("[MH] Order has been completed: ElevatorID: %d, Floor: %d, ButtonType: %s\n", msg.ElevatorID, msg.ButtonEvent.Floor, utils.ButtonTypeToString(msg.ButtonEvent.Button))
 				state.MasterStateStore.ClearOrder(msg.ButtonEvent, msg.ElevatorID)
 				state.MasterStateStore.ClearHallRequest(msg.ButtonEvent)
 				elevatorFSM.SetHallLigths(state.MasterStateStore.HallRequests)
-				SendAck(msg, msgTx)
 
 			case message.ButtonEvent:
 
 				if config.IsMaster {
+					fmt.Println("I'm the master, dooing stuff")
 					switch msg.ButtonEvent.Button {
 					case drivers.BT_HallDown, drivers.BT_HallUp:
 						if !state.MasterStateStore.GetHallOrders()[msg.ButtonEvent.Floor][int(msg.ButtonEvent.Button)] {
@@ -63,9 +64,6 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 					}
 				}
 				SendAck(msg, msgTx)
-
-			case message.Heartbeat:
-				state.MasterStateStore.UpdateHeartbeat(msg.ElevatorID)
 
 			case message.State:
 				status := state.ElevatorStatus{
@@ -90,10 +88,9 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 				}
 
 			case message.MasterAnnouncement:
-				fmt.Printf("[INFO] Oppdaterer master til heis %d\n", msg.ElevatorID)
-				CurrentMasterID = msg.ElevatorID
-				config.IsMaster = (config.ElevatorID == msg.ElevatorID)
-
+				fmt.Printf("[INFO] Oppdaterer master til heis %d\n", msg.MasterID)
+				CurrentMasterID = msg.MasterID
+				config.IsMaster = (config.ElevatorID == CurrentMasterID)
 			}
 		}
 	}
@@ -276,10 +273,4 @@ func HRALoop(elevatorFSM *elevator.Elevator, msgTx chan message.Message, tracker
 			}
 		}
 	}
-}
-
-// TODO: Fix this function
-func StartMasterProcess(peerAddrs []string, elevatorFSM *elevator.Elevator, msgTx chan message.Message) {
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
 }
