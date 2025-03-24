@@ -41,11 +41,11 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 
 			case message.CompletedOrder:
 				//TODO: Notify
+				SendAck(msg, msgTx)
 				fmt.Printf("[MH] Order has been completed: ElevatorID: %d, Floor: %d, ButtonType: %s\n", msg.ElevatorID, msg.ButtonEvent.Floor, utils.ButtonTypeToString(msg.ButtonEvent.Button))
 				state.MasterStateStore.ClearOrder(msg.ButtonEvent, msg.ElevatorID)
 				state.MasterStateStore.ClearHallRequest(msg.ButtonEvent)
 				elevatorFSM.SetHallLigths(state.MasterStateStore.HallRequests)
-				SendAck(msg, msgTx)
 
 			case message.ButtonEvent:
 
