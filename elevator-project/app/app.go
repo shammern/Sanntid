@@ -65,9 +65,6 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 				}
 				SendAck(msg, msgTx)
 
-			case message.Heartbeat:
-				state.MasterStateStore.UpdateHeartbeat(msg.ElevatorID)
-
 			case message.State:
 				status := state.ElevatorStatus{
 					ElevatorID:      msg.ElevatorID,

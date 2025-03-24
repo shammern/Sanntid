@@ -93,16 +93,15 @@ func DirectionIntToString(dir int) string {
 
 func StateIntToString(state int) string {
 	switch state {
-	case 0:
+	case 0, 1:
 		return "idle"
-	case 1:
+
+	case 2, 3:
 		return "moving"
-	case 2:
-		return "moving"
-	case 3:
+
+	case 4, 5:
 		return "doorOpen"
-	case 4:
-		return "doorOpen"
+
 	default:
 		return "Unknown button"
 	}
