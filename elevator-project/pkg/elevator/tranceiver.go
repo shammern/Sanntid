@@ -7,6 +7,7 @@ import (
 	"elevator-project/pkg/state"
 	"elevator-project/pkg/utils"
 	"fmt"
+	"strconv"
 	"time"
 )
 
@@ -63,4 +64,39 @@ func (e *Elevator) NotifyMaster(msgType message.MessageType, event drivers.Butto
 
 	// For cab button events, simply send the message.
 	//e.msgTx <- msg
+}
+
+// Takes a ordermap and extract the orders for the currentelevator. Orders are packed into a list and returned.
+func ConvertOrderDataToOrders(orderData map[string][][2]bool) []Order {
+	var ordersList []Order
+	orders := orderData[strconv.Itoa(config.ElevatorID)]
+
+	for floor, calls := range orders {
+		// Hall up call
+		if calls[0] {
+			ordersList = append(ordersList, Order{
+				Event: drivers.ButtonEvent{Floor: floor, Button: drivers.BT_HallUp},
+				Flag:  true,
+			})
+		} else {
+			ordersList = append(ordersList, Order{
+				Event: drivers.ButtonEvent{Floor: floor, Button: drivers.BT_HallUp},
+				Flag:  false,
+			})
+		}
+		// Hall down call
+		if calls[1] {
+			ordersList = append(ordersList, Order{
+				Event: drivers.ButtonEvent{Floor: floor, Button: drivers.BT_HallDown},
+				Flag:  true,
+			})
+		} else {
+			ordersList = append(ordersList, Order{
+				Event: drivers.ButtonEvent{Floor: floor, Button: drivers.BT_HallDown},
+				Flag:  false,
+			})
+		}
+	}
+
+	return ordersList
 }

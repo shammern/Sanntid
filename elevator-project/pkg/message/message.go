@@ -79,6 +79,7 @@ type AckTracker struct {
 	SentTime     time.Time     // Timestamp when the message was sent.
 	ExpectedAcks map[int]bool  // Map of elevator IDs to whether their ack has been received.
 	Done         chan struct{} // Channel to signal when all acks are received.
+	closeOnce    sync.Once
 }
 
 type OutstandingAcks struct {
@@ -128,11 +129,18 @@ func (oa *OutstandingAcks) DeleteAckTracker(msgID string) {
 	delete(oa.Tracker, msgID)
 }
 
+// Call this method to safely signal termination (for either ack completion or cancellation)
+func (at *AckTracker) Terminate() {
+	at.closeOnce.Do(func() {
+		close(at.Done)
+	})
+}
+
 // processAck processes an ack message: it logs which elevator sent the ack,
 // updates the tracker, prints the list of pending acks, and if complete,
 // closes the tracker and removes it from the global map.
 func (oa *OutstandingAcks) processAck(tracker *AckTracker, ack Message) {
-	// Log the received ack from a specific elevator.
+
 	//fmt.Printf("[AckTracker] Received an ACK from elevator %d for message %s\n", ack.ElevatorID, ack.AckID)
 
 	// Update the tracker to indicate that own elevator has seen the msg
@@ -146,12 +154,11 @@ func (oa *OutstandingAcks) processAck(tracker *AckTracker, ack Message) {
 		}
 	}
 
-	// Log pending acks or complete the tracker if all acks are received.
 	if len(pending) > 0 {
-		//	fmt.Printf("[AckTracker] Still waiting for ACKs from elevators: %v\n", pending)
+		fmt.Printf("[AckTracker] Still waiting for ACKs from elevators: %v\n", pending)
 	} else {
 		//fmt.Printf("[AckTracker] All ACKs received for message %s\n", ack.AckID)
-		close(tracker.Done)
+		tracker.Terminate()
 		oa.DeleteAckTracker(ack.AckID)
 	}
 }

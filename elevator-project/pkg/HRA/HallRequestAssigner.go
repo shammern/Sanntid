@@ -1,12 +1,17 @@
 package HRA
 
 import (
+	"elevator-project/pkg/config"
+	"elevator-project/pkg/elevator"
+	"elevator-project/pkg/message"
 	"elevator-project/pkg/state"
+	"elevator-project/pkg/utils"
 	"encoding/json"
 	"fmt"
 	"os/exec"
 	"runtime"
 	"strconv"
+	"time"
 )
 
 type HRAElevState struct {
@@ -19,6 +24,10 @@ type HRAElevState struct {
 type HRAInput struct {
 	HallRequests [][2]bool               `json:"hallRequests"`
 	States       map[string]HRAElevState `json:"states"`
+}
+
+type OrderData struct {
+	Orders map[string][][2]bool
 }
 
 func HRARun(st *state.Store) (map[string][][2]bool, HRAInput, error) {
@@ -123,5 +132,32 @@ func PrintHRAInput(input HRAInput) {
 		fmt.Printf("    Floor      : %d\n", state.Floor)
 		fmt.Printf("    Direction  : %s\n", state.Direction)
 		fmt.Printf("    CabRequests: %v\n", state.CabRequests)
+	}
+}
+
+func HRALoop(elevatorFSM *elevator.Elevator, msgTx chan message.Message, trackerChan chan *message.AckTracker, msgID *message.MsgID, orderRequestCh chan<- OrderData) {
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		if config.IsMaster {
+			newOrder, _, err := HRARun(state.MasterStateStore)
+			if err != nil {
+				fmt.Println("HRA error:", err)
+				continue
+			}
+			if !utils.CompareMaps(newOrder, state.MasterStateStore.CurrentOrders) {
+				state.MasterStateStore.CurrentOrders = newOrder
+				elevatorFSM.SetHallLigths(state.MasterStateStore.HallRequests)
+				// Send new order to the order sender worker.
+				orderRequestCh <- OrderData{Orders: newOrder}
+
+				// Process new order events.
+				events := elevator.ConvertOrderDataToOrders(newOrder)
+				for _, event := range events {
+					elevatorFSM.Orders <- event
+				}
+			}
+		}
 	}
 }

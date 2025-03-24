@@ -3,6 +3,7 @@ package main
 
 import (
 	"elevator-project/app"
+	"elevator-project/pkg/HRA"
 	"elevator-project/pkg/config"
 	"elevator-project/pkg/drivers"
 	"elevator-project/pkg/elevator"
@@ -26,6 +27,7 @@ func main() {
 	msgRx := make(chan message.Message)
 	ackChan := make(chan message.Message)
 	ackTrackerChan := make(chan *message.AckTracker)
+	orderChan := make(chan HRA.OrderData)
 	go bcast.Transmitter(config.BCport, msgTx)
 	go bcast.Receiver(config.BCport, msgRx)
 
@@ -37,9 +39,10 @@ func main() {
 
 	go app.MessageHandler(msgRx, ackChan, msgTx, elevator, ackTrackerChan)
 	go app.MonitorSystemInputs(elevator)
-	go peers.P2Pmonitor(state.MasterStateStore, msgTx)
+	go peers.P2Pmonitor(state.MasterStateStore)
 	go app.StartWorldviewBC(elevator, msgTx, msgCounter)
-	go app.HRALoop(elevator, msgTx, ackTrackerChan, msgCounter)
+	go HRA.HRALoop(elevator, msgTx, ackTrackerChan, msgCounter, orderChan)
+	go app.OrderSenderWorker(orderChan, msgTx, ackTrackerChan, msgCounter)
 
 	go app.MonitorMasterHeartbeat(state.MasterStateStore, msgTx)
 
