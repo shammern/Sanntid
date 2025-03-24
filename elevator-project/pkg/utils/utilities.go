@@ -5,7 +5,6 @@ import (
 	"elevator-project/pkg/drivers"
 	"elevator-project/pkg/message"
 	"elevator-project/pkg/network/peers"
-	"fmt"
 	"strconv"
 )
 
@@ -91,6 +90,7 @@ func GetActiveElevators() []int {
 	return peerIDs
 }
 
+/*
 func PrintAckTracker(a message.AckTracker) {
 	fmt.Println("AckTracker Details:")
 	fmt.Printf("  MsgID: %s\n", a.MsgID)
@@ -99,8 +99,8 @@ func PrintAckTracker(a message.AckTracker) {
 	for id, acked := range a.ExpectedAcks {
 		fmt.Printf("    Elevator %d: %t\n", id, acked)
 	}
-
 }
+*/
 
 // CompareMaps returns true if the two maps are equal.
 // Two maps are considered equal if they have the same keys, and for each key,

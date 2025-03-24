@@ -20,11 +20,15 @@ var UDPAckAddresses = map[int]string{
 	3: "127.0.0.1:8013",
 }
 
-var NumFloors = 4
-var ElevatorID = 0
-var HeartBeatInterval = 100 * time.Millisecond
-var WorldviewBCInterval = 100 * time.Millisecond
-var ResendInterval = 10 * time.Millisecond
-var BCport = 15500
-var P2Pport = 16000
+const HeartBeatInterval = 5 * time.Millisecond
+const WorldviewBCInterval = 100 * time.Millisecond
+const ResendInterval = 10 * time.Millisecond
+const Timeout = 500 * time.Millisecond
+
+const BCport = 15500
+const P2Pport = 16000
+
+const NumFloors = 4
+
 var IsMaster = false
+var ElevatorID = 0

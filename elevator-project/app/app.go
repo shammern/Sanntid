@@ -8,7 +8,6 @@ import (
 	"elevator-project/pkg/message"
 	"elevator-project/pkg/state"
 	"elevator-project/pkg/utils"
-
 	"fmt"
 	"time"
 )
@@ -29,7 +28,7 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 
 				fmt.Println("[MH] New orders received, sending to elevator")
 
-				events := convertOrderDataToOrders(orderData)
+				events := elevator.ConvertOrderDataToOrders(orderData)
 				for _, event := range events {
 					elevatorFSM.Orders <- event
 				}
@@ -133,10 +132,10 @@ func DebugPrintStateStore() {
 		for id, status := range statuses {
 			fmt.Printf("Elevator %d:\n", id)
 			fmt.Printf("  ElevatorID   : %d\n", status.ElevatorID)
-			fmt.Printf("  State        : %s\n", HRA.StateIntToString(status.State))
+			//fmt.Printf("  State        : %s\n", HRA.StateIntToString(status.State))
 			fmt.Printf("  Available        : %t\n", status.Available)
 			fmt.Printf("  CurrentFloor : %d\n", status.CurrentFloor)
-			fmt.Printf("  TravelingDirection  : %s\n", HRA.DirectionIntToString(status.TravelDirection))
+			//fmt.Printf("  TravelingDirection  : %s\n", HRA.DirectionIntToString(status.TravelDirection))
 			fmt.Printf("  LastUpdated  : %v\n", status.LastUpdated.Format("15:04:05"))
 			fmt.Printf("  HallRequests : %+v\n", status.RequestMatrix.HallRequests)
 			fmt.Printf("  CabRequests  : %+v\n", status.RequestMatrix.CabRequests)
@@ -232,11 +231,9 @@ func SendOrder(newOrder map[string][][2]bool, msgTx chan message.Message, trackC
 
 		select {
 		case <-tracker.Done:
-			fmt.Printf("[MH: Master] All acks received for MsgID: %s, stopping order broadcast\n", tracker.MsgID)
-			//delete(outstandingAcks, orderMsg.MsgID)
-			//TODO: Should delete tracker
-
+			fmt.Printf("[MH: Master] Terminating order broadcast for MsgID: %s\n", tracker.MsgID)
 			return
+
 		case <-ticker.C:
 			fmt.Println("[MH: Master] Resending order for MsgID:", orderMsg.MsgID)
 			msgTx <- orderMsg
@@ -244,31 +241,54 @@ func SendOrder(newOrder map[string][][2]bool, msgTx chan message.Message, trackC
 	}
 }
 
-func HRALoop(elevatorFSM *elevator.Elevator, msgTx chan message.Message, trackerChan chan *message.AckTracker, msgID *message.MsgID) {
-	ticker := time.NewTicker(100 * time.Millisecond)
+// orderSenderWorker continuously listens for order requests and handles cancellation/resending.
+func OrderSenderWorker(orderRequestCh <-chan HRA.OrderData, msgTx chan message.Message, trackerChan chan *message.AckTracker, msgID *message.MsgID) {
+	var currentTracker *message.AckTracker
+	ticker := time.NewTicker(config.ResendInterval)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		if config.IsMaster {
-			newOrder, input, _ := HRA.HRARun(state.MasterStateStore)
-			if !utils.CompareMaps(newOrder, state.MasterStateStore.CurrentOrders) {
-				HRA.PrintHRAInput(input)
-				fmt.Println("[HRA]Master sending the output:")
-				for k, v := range newOrder {
-					fmt.Printf("%6v : %+v\n", k, v)
-				}
+	// Use a for-select loop that also listens for new orders.
+	for {
+		select {
+		// New order received from HRALoop.
+		case req := <-orderRequestCh:
+			// Cancel previous order if any.
+			if currentTracker != nil {
+				currentTracker.Terminate()
+			}
+			// Create a new tracker.
+			currentMsgID := msgID.Get()
+			tracker := message.NewAckTracker(currentMsgID, utils.GetActiveElevators())
+			tracker.ExpectedAcks[config.ElevatorID] = true
+			trackerChan <- tracker
+			currentTracker = tracker
 
-				// Launch the SendOrder routine (which itself uses an AckTracker)
+			// Prepare the message that will be repeatedly sent.
+			orderMsg := message.Message{
+				Type:         message.OrderDelegation,
+				ElevatorID:   config.ElevatorID,
+				MsgID:        msgID.Next(),
+				OrderData:    req.Orders,
+				HallRequests: state.MasterStateStore.HallRequests,
+			}
 
-				state.MasterStateStore.CurrentOrders = newOrder
-				elevatorFSM.SetHallLigths(state.MasterStateStore.HallRequests)
+			// Enter a nested loop to resend the current order.
+		resendLoop:
+			for {
+				select {
+				case <-tracker.Done:
+					fmt.Printf("[MH: Master] Terminating sending of MsgID: %s, stopping order broadcast\n", tracker.MsgID)
+					break resendLoop
 
-				go SendOrder(newOrder, msgTx, trackerChan, msgID)
+				case <-ticker.C:
+					fmt.Println("[MH: Master] Resending order for MsgID:", orderMsg.MsgID)
+					msgTx <- orderMsg
 
-				// Process the new order events.
-				events := convertOrderDataToOrders(newOrder)
-				for _, event := range events {
-					elevatorFSM.Orders <- event
+				case newReq := <-orderRequestCh:
+					currentTracker.Terminate()
+			
+					req = newReq
+					break resendLoop
 				}
 			}
 		}
