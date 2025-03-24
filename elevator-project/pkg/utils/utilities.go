@@ -49,10 +49,10 @@ func MessageTypeToString(m message.MessageType) string {
 		return "Ack"
 	case message.Heartbeat:
 		return "Heartbeat"
-	case message.MasterSlaveConfig:
-		return "MasterSlaveConfig"
-	case message.Promotion:
-		return "Promotion"
+	case message.MasterQuery:
+		return "MasterQuery"
+	case message.MasterAnnouncement:
+		return "MasterAnnouncement"
 	default:
 		return "Unknown"
 	}

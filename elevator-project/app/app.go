@@ -13,12 +13,8 @@ import (
 	"time"
 )
 
-
-var CurrentMasterID int = 1
-
 var CurrentMasterID int = -1
 var BackupElevatorID int = -1
-
 
 func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, msgTx chan message.Message, elevatorFSM *elevator.Elevator, trackerChan chan *message.AckTracker) {
 	for msg := range msgRx {
@@ -27,7 +23,6 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 			switch msg.Type {
 			case message.Ack:
 				ackChan <- msg
-
 
 			case message.OrderDelegation:
 				orderData := msg.OrderData
@@ -66,7 +61,6 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 							state.MasterStateStore.Elevators[msg.ElevatorID].RequestMatrix.CabRequests[msg.ButtonEvent.Floor] = true
 						}
 					}
-					//SendAck(msg, msgTx)
 				}
 				SendAck(msg, msgTx)
 
@@ -85,7 +79,7 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 				}
 				state.MasterStateStore.UpdateStatus(status)
 
-			case message.MasterSlaveConfig:
+			case message.MasterQuery:
 				// Update our view of the current master.
 				fmt.Printf("[MH] Received master config update: new master is elevator %d\n", msg.ElevatorID)
 				CurrentMasterID = msg.ElevatorID
@@ -98,22 +92,10 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 			case message.MasterAnnouncement:
 				fmt.Printf("[INFO] Oppdaterer master til heis %d\n", msg.ElevatorID)
 				CurrentMasterID = msg.ElevatorID
-				IsMaster = (config.ElevatorID == msg.ElevatorID)
+				config.IsMaster = (config.ElevatorID == msg.ElevatorID)
 
 			}
 		}
-	}
-}
-
-func StartHeartbeatBC(msgTx chan message.Message) {
-	ticker := time.NewTicker(config.HeartBeatInterval)
-
-	for range ticker.C {
-		hbMsg := message.Message{
-			Type:       message.Heartbeat,
-			ElevatorID: config.ElevatorID,
-		}
-		msgTx <- hbMsg
 	}
 }
 
@@ -215,7 +197,6 @@ func MonitorSystemInputs(elevatorFSM *elevator.Elevator) {
 	}
 }
 
-
 func SendAck(msg message.Message, msgTx chan message.Message) {
 	fmt.Printf("[MH] Message received from elevatorID: %d:\n\tType: %s, msgID: %s, sending ack\n", msg.ElevatorID, utils.MessageTypeToString(msg.Type), msg.MsgID)
 
@@ -293,35 +274,12 @@ func HRALoop(elevatorFSM *elevator.Elevator, msgTx chan message.Message, tracker
 					elevatorFSM.Orders <- event
 				}
 			}
+		}
+	}
+}
 
 // TODO: Fix this function
 func StartMasterProcess(peerAddrs []string, elevatorFSM *elevator.Elevator, msgTx chan message.Message) {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
-}
-
-// This function can be used to trigger events if units exit or enter the network
-func P2Pmonitor(msgTx chan message.Message) {
-	peerUpdateCh := make(chan peers.PeerUpdate)
-	peerTxEnable := make(chan bool)
-	go peers.Transmitter(config.P2Pport, strconv.Itoa(config.ElevatorID), peerTxEnable)
-	go peers.Receiver(config.P2Pport, peerUpdateCh)
-	for {
-		update := <-peerUpdateCh
-		Peers = update
-		fmt.Printf("Peer update:\n")
-		fmt.Printf("  Peers:    %q\n", update.Peers)
-		fmt.Printf("  New:      %q\n", update.New)
-		fmt.Printf("  Lost:     %q\n", update.Lost)
-		if len(update.New) > 0 {
-			fmt.Printf("[INFO] Ny heis oppdaget: %q. Spør etter master...\n", update.New)
-
-			queryMsg := message.Message{
-				Type:       message.MasterQuery,
-				ElevatorID: 0, //Asking for the master
-			}
-			msgTx <- queryMsg
-
-		}
-	}
 }

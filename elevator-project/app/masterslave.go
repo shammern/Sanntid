@@ -79,45 +79,17 @@ func MonitorMasterHeartbeat(store *state.Store, msgTx chan message.Message) {
 	}
 }
 
-// Promote this elevator to master
-
-func PromoteToMaster(peerAddrs []string) {
-	config.IsMaster = true
-	/*CurrentMasterID = LocalElevatorID
-	fmt.Printf("Elevator %d is now promoted to master.\n", LocalElevatorID)
-
-
-func PromoteToMaster(peerAddrs []string, msgTx chan message.Message) {
-	IsMaster = true
-	CurrentMasterID = config.ElevatorID
-	fmt.Printf("[INFO] Heis %d er nå master!\n", config.ElevatorID)
-	MasterStateStore.UpdateHeartbeat(CurrentMasterID)
-
-	configMsg := message.Message{
-		Type:       message.MasterAnnouncement,
-		ElevatorID: config.ElevatorID,
-	}
-	msgTx <- configMsg
-}
-
-
-// Reassign orders from a failed elevator to active elevators
-func ReassignOrders(failedStatus state.ElevatorStatus) {
-	for floor, hallRequests := range failedStatus.RequestMatrix.HallRequests {
-		for dir, active := range hallRequests {
-			if active {
-				fmt.Printf("Reassigning hall request at floor %d, direction %d from failed elevator %d.\n", floor, dir, failedStatus.ElevatorID)
-
+/*
 // Monitor elevator heartbeats and reassign orders if necessary
 func MonitorElevatorHeartbeats(msgTx chan message.Message) {
-	if !IsMaster {
+	if !config.IsMaster {
 		return
 	}
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 
 	for range ticker.C {
-		statuses := MasterStateStore.GetAll()
+		statuses := state.MasterStateStore.GetAll()
 		for id, status := range statuses {
 			if id == config.ElevatorID {
 				continue
@@ -129,3 +101,4 @@ func MonitorElevatorHeartbeats(msgTx chan message.Message) {
 		}
 	}
 }
+*/
