@@ -50,6 +50,7 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 			case message.ButtonEvent:
 
 				if config.IsMaster {
+					fmt.Println("I'm the master, dooing stuff")
 					switch msg.ButtonEvent.Button {
 					case drivers.BT_HallDown, drivers.BT_HallUp:
 						if !state.MasterStateStore.GetHallOrders()[msg.ButtonEvent.Floor][int(msg.ButtonEvent.Button)] {
@@ -90,10 +91,9 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 				}
 
 			case message.MasterAnnouncement:
-				fmt.Printf("[INFO] Oppdaterer master til heis %d\n", msg.ElevatorID)
-				CurrentMasterID = msg.ElevatorID
-				config.IsMaster = (config.ElevatorID == msg.ElevatorID)
-
+				fmt.Printf("[INFO] Oppdaterer master til heis %d\n", msg.MasterID)
+				CurrentMasterID = msg.MasterID
+				config.IsMaster = (config.ElevatorID == CurrentMasterID)
 			}
 		}
 	}
@@ -276,10 +276,4 @@ func HRALoop(elevatorFSM *elevator.Elevator, msgTx chan message.Message, tracker
 			}
 		}
 	}
-}
-
-// TODO: Fix this function
-func StartMasterProcess(peerAddrs []string, elevatorFSM *elevator.Elevator, msgTx chan message.Message) {
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
 }

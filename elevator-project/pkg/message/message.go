@@ -42,6 +42,7 @@ type Message struct {
 	OrderData    map[string][][2]bool //Hallorders for individual elevators
 	HallRequests [][2]bool            // All active hallorders aka the halllights
 	AckID        string               //AckID = msgID for the corresponding message requiring an ack
+	MasterID     int                  //Current amster
 }
 
 type MsgID struct {

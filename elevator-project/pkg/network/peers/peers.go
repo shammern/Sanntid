@@ -132,16 +132,18 @@ func P2Pmonitor(stateStore *state.Store, msgTx chan message.Message) {
 
 		}
 
-		if len(update.New) > 0 {
-			fmt.Printf("[INFO] Ny heis oppdaget: %q. Spør etter master...\n", update.New)
+		/*
+			if len(update.New) > 0 {
+				fmt.Printf("[INFO] Ny heis oppdaget: %q. Spør etter master...\n", update.New)
 
-			queryMsg := message.Message{
-				Type:       message.MasterQuery,
-				ElevatorID: 0, //Asking for the master
+				queryMsg := message.Message{
+					Type:       message.MasterQuery,
+					ElevatorID: 0, //Asking for the master
+				}
+				msgTx <- queryMsg
+
 			}
-			msgTx <- queryMsg
-
-		}
+		*/
 
 		// Ensure our own elevator is always marked as available.
 		stateStore.UpdateElevatorAvailability(config.ElevatorID, true)
