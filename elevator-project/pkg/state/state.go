@@ -61,15 +61,6 @@ func (s *Store) UpdateStatus(status ElevatorStatus) {
 	s.Elevators[status.ElevatorID] = status
 }
 
-// UpdateHeartbeat updates the heartbeat timestamp for a given elevator.
-func (s *Store) UpdateHeartbeat(elevID int) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	status := s.Elevators[elevID]
-	status.LastUpdated = time.Now()
-	s.Elevators[elevID] = status
-}
-
 // GetAll returns a copy of all elevator statuses.
 func (s *Store) GetAll() map[int]ElevatorStatus {
 	s.mu.RLock()
@@ -132,11 +123,6 @@ func (s *Store) ClearOrder(button drivers.ButtonEvent, elevatorID int) error {
 	case drivers.BT_HallUp, drivers.MD_Down:
 		s.Elevators[elevatorID].RequestMatrix.HallRequests[button.Floor][0] = false
 		s.HallRequests[button.Floor][int(button.Button)] = false
-
-		//case drivers.BT_HallDown:
-		//	s.Elevators[elevatorID].RequestMatrix.HallRequests[button.Floor][0] = false
-		//	s.HallRequests[button.Floor][int(button.Button)] = false
-
 	}
 
 	return nil
