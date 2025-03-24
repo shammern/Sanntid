@@ -34,13 +34,12 @@ func main() {
 
 	go elevator.Run()
 	go ackMonitor.RunAckMonitor()
-
 	go app.MessageHandler(msgRx, ackChan, msgTx, elevator, ackTrackerChan)
 	go app.MonitorSystemInputs(elevator)
 	go peers.P2Pmonitor(state.MasterStateStore, msgTx)
 	go app.StartWorldviewBC(elevator, msgTx, msgCounter)
 	go app.HRALoop(elevator, msgTx, ackTrackerChan, msgCounter)
-
+	go app.InitMasterDiscovery(msgTx)
 	go app.MonitorMasterHeartbeat(state.MasterStateStore, msgTx)
 
 	select {}

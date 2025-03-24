@@ -15,6 +15,8 @@ import (
 
 var CurrentMasterID int = -1
 var BackupElevatorID int = -1
+var MasterQueryTimer *time.Timer
+var MasterQuerySent bool = false
 
 func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, msgTx chan message.Message, elevatorFSM *elevator.Elevator, trackerChan chan *message.AckTracker) {
 	for msg := range msgRx {
@@ -78,19 +80,24 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 				state.MasterStateStore.UpdateStatus(status)
 
 			case message.MasterQuery:
-				// Update our view of the current master.
-				fmt.Printf("[MH] Received master config update: new master is elevator %d\n", msg.ElevatorID)
-				CurrentMasterID = msg.ElevatorID
-				if config.ElevatorID != msg.ElevatorID {
-					config.IsMaster = false
-				} else {
-					config.IsMaster = true
+				// Always respond with your known master (even if you're not master yourself)
+				response := message.Message{
+					Type:     message.MasterAnnouncement,
+					MasterID: CurrentMasterID,
 				}
+				msgTx <- response
 
 			case message.MasterAnnouncement:
-				fmt.Printf("[INFO] Oppdaterer master til heis %d\n", msg.MasterID)
+				fmt.Println("[MH] Received MasterAnnouncement:", msg.MasterID)
 				CurrentMasterID = msg.MasterID
-				config.IsMaster = (config.ElevatorID == CurrentMasterID)
+				config.IsMaster = (config.ElevatorID == msg.MasterID)
+
+				// Cancel election timer if waiting
+				if MasterQueryTimer != nil {
+					MasterQueryTimer.Stop()
+					MasterQueryTimer = nil
+				}
+
 			}
 		}
 	}
@@ -273,4 +280,23 @@ func HRALoop(elevatorFSM *elevator.Elevator, msgTx chan message.Message, tracker
 			}
 		}
 	}
+}
+
+func InitMasterDiscovery(msgTx chan message.Message) {
+	go func() {
+		fmt.Println("[Startup] Sending MasterQuery")
+
+		msgTx <- message.Message{
+			Type:       message.MasterQuery,
+			ElevatorID: config.ElevatorID,
+		}
+
+		MasterQuerySent = true
+		MasterQueryTimer = time.NewTimer(750 * time.Millisecond)
+
+		<-MasterQueryTimer.C
+
+		fmt.Println("[Startup] No MasterAnnouncement received — starting heartbeat/election loop")
+		go MonitorMasterHeartbeat(state.MasterStateStore, msgTx)
+	}()
 }
