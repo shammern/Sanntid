@@ -35,23 +35,14 @@ func main() {
 	//go app.StartHeartbeatBC(msgTx)
 	go elevator.Run()
 	go app.MonitorSystemInputs(elevator)
-	go peers.P2Pmonitor(state.MasterStateStore)
+	go peers.P2Pmonitor(state.MasterStateStore, msgTx)
 	go app.StartWorldviewBC(elevator, msgTx, msgCounter)
 	go ackMonitor.RunAckMonitor()
 	go app.HRALoop(elevator, msgTx, ackTrackerChan, msgCounter)
 
-
-
 	//FSM
 
-	
-	app.MasterStateStore.UpdateHeartbeat(config.ElevatorID)
-
-	go app.StartHeartbeatBC(msgTx)
-
-	go app.MonitorSystemInputs(elevator, msgTx)
-	go app.P2Pmonitor(msgTx)
-	go app.MonitorMasterHeartbeat(app.MasterStateStore, msgTx)
+	//app.MasterStateStore.UpdateHeartbeat(config.ElevatorID)
 
 	select {}
 }

@@ -2,6 +2,7 @@ package peers
 
 import (
 	"elevator-project/pkg/config"
+	"elevator-project/pkg/message"
 	"elevator-project/pkg/network/conn"
 	"elevator-project/pkg/state"
 	"fmt"
@@ -91,7 +92,7 @@ func Receiver(port int, peerUpdateCh chan<- PeerUpdate) {
 	}
 }
 
-func P2Pmonitor(stateStore *state.Store) {
+func P2Pmonitor(stateStore *state.Store, msgTx chan message.Message) {
 	// This function triggers events when elevators join or leave the network.
 	peerUpdateCh := make(chan PeerUpdate)
 	peerTxEnable := make(chan bool)
@@ -128,6 +129,18 @@ func P2Pmonitor(stateStore *state.Store) {
 			} else {
 				fmt.Printf("Error parsing lost peer id %s: %v\n", lostPeer, err)
 			}
+
+		}
+
+		if len(update.New) > 0 {
+			fmt.Printf("[INFO] Ny heis oppdaget: %q. Spør etter master...\n", update.New)
+
+			queryMsg := message.Message{
+				Type:       message.MasterQuery,
+				ElevatorID: 0, //Asking for the master
+			}
+			msgTx <- queryMsg
+
 		}
 
 		// Ensure our own elevator is always marked as available.

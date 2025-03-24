@@ -38,29 +38,29 @@ func (e *Elevator) NotifyMaster(msgType message.MessageType, event drivers.Butto
 	}
 
 	// For hall events, broadcast until all ACKs are received.
-	if event.Button != drivers.BT_Cab {
-		expected := utils.GetActiveElevators()
-		tracker := message.NewAckTracker(msg.MsgID, expected)
+	//if event.Button != drivers.BT_Cab {
+	expected := utils.GetActiveElevators()
+	tracker := message.NewAckTracker(msg.MsgID, expected)
 
-		tracker.ExpectedAcks[config.ElevatorID] = true
+	tracker.ExpectedAcks[config.ElevatorID] = true
 
-		// Register the tracker in the outstanding acks channel.
-		e.ackTrackerChan <- tracker
+	// Register the tracker in the outstanding acks channel.
+	e.ackTrackerChan <- tracker
 
-		ticker := time.NewTicker(config.ResendInterval)
-		defer ticker.Stop()
+	ticker := time.NewTicker(config.ResendInterval)
+	defer ticker.Stop()
 
-		for {
-			select {
-			case <-tracker.Done:
-				fmt.Printf("[ElevatorTransceiver] All ACKs received for MsgID: %s, stopping broadcast to master\n", tracker.MsgID)
-				return
-			case <-ticker.C:
-				e.msgTx <- msg
-			}
+	for {
+		select {
+		case <-tracker.Done:
+			fmt.Printf("[ElevatorTransceiver] All ACKs received for MsgID: %s, stopping broadcast to master\n", tracker.MsgID)
+			return
+		case <-ticker.C:
+			e.msgTx <- msg
 		}
 	}
+	//}
 
 	// For cab button events, simply send the message.
-	e.msgTx <- msg
+	//e.msgTx <- msg
 }
