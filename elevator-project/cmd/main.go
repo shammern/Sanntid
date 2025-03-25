@@ -34,18 +34,21 @@ func main() {
 	ackMonitor := message.NewAckMonitor(ackTrackerChan, ackChan)
 	elevator := elevator.NewElevator(config.ElevatorID, msgTx, &message.MsgCounter, ackTrackerChan)
 
-	go elevator.Run()
 	go ackMonitor.RunAckMonitor()
 	go app.MessageHandler(msgRx, ackChan, msgTx, elevator, ackTrackerChan, masterAnnounced)
-	go app.MonitorSystemInputs(elevator)
 	go peers.P2Pmonitor(state.MasterStateStore)
+	go app.InitMasterDiscovery(msgTx, masterAnnounced)
+	go app.MonitorMasterHeartbeat(state.MasterStateStore, msgTx)
+	elevator.InitElevator()
 
-	go app.StartWorldviewBC(elevator, msgTx, &message.MsgCounter)
+	go app.MonitorSystemInputs(elevator)
+
 	go HRA.HRALoop(elevator, msgTx, ackTrackerChan, &message.MsgCounter, orderChan)
 	go app.OrderSenderWorker(orderChan, msgTx, ackTrackerChan, &message.MsgCounter)
-	go app.InitMasterDiscovery(msgTx, masterAnnounced)
 
-	go app.MonitorMasterHeartbeat(state.MasterStateStore, msgTx)
+	go elevator.Run()
+
+	go app.StartWorldviewBC(elevator, msgTx, &message.MsgCounter)
 
 	select {}
 }

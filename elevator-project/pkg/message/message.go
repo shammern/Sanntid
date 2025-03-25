@@ -26,6 +26,8 @@ const (
 	Heartbeat
 	MasterAnnouncement // Ny meldingstype for å annonsere hvem som er master
 	MasterQuery        // Melding for å spørre "Hvem er master?"
+	RecoveryQuery
+	RecoveryState
 )
 
 type ElevatorState struct {
@@ -154,7 +156,7 @@ func (at *AckTracker) Terminate() {
 // closes the tracker and removes it from the global map.
 func (oa *OutstandingAcks) processAck(tracker *AckTracker, ack Message) {
 
-	//fmt.Printf("[AckTracker] Received an ACK from elevator %d for message %s\n", ack.ElevatorID, ack.AckID)
+	fmt.Printf("[AckTracker] Received an ACK from elevator %d for message %s\n", ack.ElevatorID, ack.AckID)
 
 	// Update the tracker to indicate that own elevator has seen the msg
 	tracker.ExpectedAcks[ack.ElevatorID] = true
