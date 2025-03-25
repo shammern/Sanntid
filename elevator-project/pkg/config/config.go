@@ -26,6 +26,8 @@ const ResendInterval = 10 * time.Millisecond
 const Timeout = 500 * time.Millisecond
 const QueryMasterTimer = 500 * time.Millisecond
 const MsgTimeout = 2 * time.Second
+const TimeBetweenFloorsThreshold = 5 * time.Second
+const DoorOpenThreshold = 10 * time.Second
 
 const BCport = 15500
 const P2Pport = 16000

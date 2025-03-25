@@ -53,7 +53,6 @@ type Order struct {
 	Flag  bool
 }
 
-// used for internal elevator logic and handlig
 type Elevator struct {
 	ElevatorID          int
 	state               ElevatorState
@@ -139,15 +138,15 @@ func (e *Elevator) Run() {
 			}
 			// Error check for door open states:
 			if (e.state == DoorOpen || e.state == DoorObstructed) &&
-				time.Since(e.doorOpenStartTime) > 10*time.Second {
+				time.Since(e.doorOpenStartTime) > config.DoorOpenThreshold {
 				e.errorTrigger = ErrorDoorTimeout
 				e.fsmEvents <- EventSetError
 			}
 
 			// Error check for moving states:
 			if (e.state == MovingUp || e.state == MovingDown) &&
-				//drivers.GetFloor() == -1 &&
-				time.Since(e.moveStartTime) > 10*time.Second {
+				drivers.GetFloor() == -1 &&
+				time.Since(e.moveStartTime) > config.TimeBetweenFloorsThreshold {
 				e.errorTrigger = ErrorMotorFailure
 				e.fsmEvents <- EventSetError
 			}
@@ -157,25 +156,23 @@ func (e *Elevator) Run() {
 					fmt.Println("[ElevatorFSM: Recovery] Motor error: attempting recovery")
 					if e.travelDirection == Up {
 						drivers.SetMotorDirection(drivers.MD_Up)
-						e.travelDirection = Down
+
 					} else {
 						drivers.SetMotorDirection(drivers.MD_Down)
-						e.travelDirection = Up
+
 					}
 					e.lastRecoveryAttempt = time.Now()
 
 				}
 			}
 
-			time.Sleep(10 * time.Millisecond) //blocking -> should find a better solution
+			time.Sleep(10 * time.Millisecond)
 
 		}
 	}
 }
 
-// TODO: It might be cleaner if handleNewOrder receives a whole requestMatrix rather than multiple orders.
 func (e *Elevator) handleNewOrder(newOrder Order) {
-	//fmt.Printf("[ElevatorFSM] New order received type: %d, floor: %d\n", int(order.Button), order.Floor)
 
 	switch newOrder.Event.Button {
 	case drivers.BT_Cab:
@@ -193,7 +190,6 @@ func (e *Elevator) handleNewOrder(newOrder Order) {
 			newOrder.Event.Floor == e.currentFloor && e.state == DoorOpen ||
 			newOrder.Event.Floor == e.currentFloor && e.state == DoorObstructed {
 			fmt.Printf("[ElevatorFSM] Received order on same floor. Ordertype: %d, floor: %d\n", int(newOrder.Event.Button), newOrder.Event.Floor)
-			//drivers.SetButtonLamp(order.Button, order.Floor, false)
 			e.clearHallReqsAtFloor()
 			drivers.SetDoorOpenLamp(true)
 			e.transitionTo(DoorOpen)
@@ -209,7 +205,7 @@ func (e *Elevator) handleFSMEvent(ev FsmEvent) {
 		drivers.SetFloorIndicator(e.currentFloor)
 		if e.state == Init {
 			drivers.SetMotorDirection(drivers.MD_Stop)
-			drivers.SetDoorOpenLamp(false) // Sikrer at døren forblir lukket
+			drivers.SetDoorOpenLamp(false)
 			e.transitionTo(Idle)
 			return
 		}
@@ -278,10 +274,6 @@ func (e *Elevator) transitionTo(newState ElevatorState) {
 		}
 		fmt.Println("[ElevatorFSM] State = DoorObstructed")
 
-		//if e.doorOpenStartTime.IsZero() {
-		//    e.doorOpenStartTime = time.Now()
-		//}
-
 	case MovingUp:
 		e.travelDirection = Up
 		fmt.Println("[ElevatorFSM] State = MovingUp")
@@ -315,7 +307,7 @@ func (e *Elevator) GetStatus() state.ElevatorStatus {
 	}
 	return state.ElevatorStatus{
 		ElevatorID:      e.ElevatorID,
-		State:           int(e.state), //cant export state, look into this later
+		State:           int(e.state),
 		CurrentFloor:    e.currentFloor,
 		TravelDirection: int(e.travelDirection),
 		LastUpdated:     time.Now(),
@@ -343,21 +335,16 @@ func (e *Elevator) SetHallLigths(matrix [][2]bool) {
 	}
 }
 
-// In package elevator
 func (e *Elevator) PrintRequestMatrix() {
 	fmt.Println("Request Matrix:")
 
-	// Print Cab Requests
 	fmt.Println("Cab Requests:")
 	for floor, req := range e.RequestMatrix.CabRequests {
 		fmt.Printf("  Floor %d: %v\n", floor, req)
 	}
 
-	// Print Hall Requests
 	fmt.Println("Hall Requests:")
 	for floor, hallReq := range e.RequestMatrix.HallRequests {
-		// Each hallReq is an array with two booleans:
-		// hallReq[0] for the "up" button and hallReq[1] for the "down" button.
 		fmt.Printf("  Floor %d: Up: %v, Down: %v\n", floor, hallReq[0], hallReq[1])
 	}
 }
