@@ -18,7 +18,6 @@ const (
 	MovingUp
 	MovingDown
 	DoorOpen
-	DoorObstructed
 	Error
 )
 
@@ -69,6 +68,7 @@ type Elevator struct {
 	moveStartTime       time.Time
 	errorTrigger        ErrorType
 	lastRecoveryAttempt time.Time
+	doorObstructed      bool
 }
 
 func NewElevator(ElevatorID int, msgTx chan message.Message, counter *message.MsgID, trackerChan chan *message.AckTracker) *Elevator {
@@ -81,6 +81,7 @@ func NewElevator(ElevatorID int, msgTx chan message.Message, counter *message.Ms
 		travelDirection: Stop,
 		ackTrackerChan:  trackerChan,
 		RequestMatrix:   RM.NewRequestMatrix(config.NumFloors),
+		doorObstructed:  false,
 	}
 }
 
@@ -149,8 +150,10 @@ func (e *Elevator) Run() {
 		select {
 		case order := <-e.Orders:
 			e.handleNewOrder(order)
+
 		case ev := <-e.fsmEvents:
 			e.handleFSMEvent(ev)
+
 		case <-func() <-chan time.Time {
 			if e.doorTimer == nil {
 				return make(chan time.Time)
@@ -158,6 +161,7 @@ func (e *Elevator) Run() {
 			return e.doorTimer.C
 		}():
 			e.fsmEvents <- EventDoorTimerElapsed
+
 		default:
 			if e.state == Idle || e.state == MovingUp || e.state == MovingDown {
 				newDirection := e.chooseDirection()
@@ -175,8 +179,7 @@ func (e *Elevator) Run() {
 				}
 			}
 			// Error check for door open states:
-			if (e.state == DoorOpen || e.state == DoorObstructed) &&
-				time.Since(e.doorOpenStartTime) > config.DoorOpenThreshold {
+			if (e.state == DoorOpen) && time.Since(e.doorOpenStartTime) > config.DoorOpenThreshold {
 				e.errorTrigger = ErrorDoorTimeout
 				e.fsmEvents <- EventSetError
 			}
@@ -225,8 +228,7 @@ func (e *Elevator) handleNewOrder(newOrder Order) {
 
 	if newOrder.Flag {
 		if newOrder.Event.Floor == e.currentFloor && e.state == Idle ||
-			newOrder.Event.Floor == e.currentFloor && e.state == DoorOpen ||
-			newOrder.Event.Floor == e.currentFloor && e.state == DoorObstructed {
+			newOrder.Event.Floor == e.currentFloor && e.state == DoorOpen {
 			fmt.Printf("[ElevatorFSM] Received order on same floor. Ordertype: %d, floor: %d\n", int(newOrder.Event.Button), newOrder.Event.Floor)
 			e.clearHallReqsAtFloor()
 			drivers.SetDoorOpenLamp(true)
@@ -239,6 +241,7 @@ func (e *Elevator) handleNewOrder(newOrder Order) {
 func (e *Elevator) handleFSMEvent(ev FsmEvent) {
 	switch ev {
 	case EventArrivedAtFloor:
+		fmt.Println("---------------Trigger-----------------")
 		e.moveStartTime = time.Now()
 		e.currentFloor = drivers.GetFloor()
 		drivers.SetFloorIndicator(e.currentFloor)
@@ -273,12 +276,22 @@ func (e *Elevator) handleFSMEvent(ev FsmEvent) {
 		}
 
 	case EventDoorObstructed:
-		if e.state == DoorOpen {
-			e.transitionTo(DoorObstructed)
+		fmt.Println("[ElevatorFSM] Door obstructed")
+		e.doorObstructed = true
+		if e.doorTimer != nil {
+			if !e.doorTimer.Stop() {
+				select {
+				case <-e.doorTimer.C:
+				default:
+				}
+			}
+			e.doorTimer = nil
 		}
 
 	case EventDoorReleased:
-		if e.state == DoorObstructed || e.state == Error {
+		fmt.Println("[ElevatorFSM] Door releases")
+		e.doorObstructed = false
+		if e.state == DoorOpen || (e.state == Error && e.errorTrigger == ErrorDoorTimeout) {
 			e.transitionTo(DoorOpen)
 			e.errorTrigger = ErrorNone
 		}
@@ -301,17 +314,10 @@ func (e *Elevator) transitionTo(newState ElevatorState) {
 
 	case DoorOpen:
 		fmt.Println("[ElevatorFSM] State = DoorOpen")
-		e.doorTimer = time.NewTimer(3 * time.Second)
 		e.doorOpenStartTime = time.Now()
-
-	case DoorObstructed:
-		if e.doorTimer != nil {
-			if !e.doorTimer.Stop() {
-				<-e.doorTimer.C
-			}
-			e.doorTimer = nil
+		if !e.doorObstructed {
+			e.doorTimer = time.NewTimer(3 * time.Second)
 		}
-		fmt.Println("[ElevatorFSM] State = DoorObstructed")
 
 	case MovingUp:
 		e.travelDirection = Up
@@ -376,8 +382,7 @@ func (e *Elevator) SetHallLigths(matrix [][2]bool) {
 
 func (e *Elevator) RecoverState(stateData *message.ElevatorState) {
 	e.RequestMatrix.CabRequests = stateData.RequestMatrix.CabRequests
-	//e.travelDirection = Direction(stateData.Direction)
-	//e.state = ElevatorState(stateData.State)
+	e.travelDirection = Direction(stateData.Direction)
 	fmt.Printf("[ElevatorFSM] Recovered cab orders: %v\n", e.RequestMatrix.CabRequests)
 	e.transitionTo(ElevatorState(stateData.State))
 }

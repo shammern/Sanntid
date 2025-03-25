@@ -270,11 +270,11 @@ func OrderSenderWorker(orderRequestCh <-chan HRA.OrderData, msgTx chan message.M
 						break resendLoop
 
 					case <-resendTicker.C:
-						fmt.Println("[MH: Master] Resending order for MsgID:", orderMsg.MsgID)
+						fmt.Println("[MH: Master] Resending order for MsgID: ", orderMsg.MsgID)
 						msgTx <- orderMsg
 
 					case <-timeoutTicker.C:
-						fmt.Println("[MH: Master] Timeout: Terminating sending of MsgID: %s", orderMsg.MsgID)
+						fmt.Println("[MH: Master] Timeout: Terminating sending of MsgID: ", orderMsg.MsgID)
 						break resendLoop
 
 					case newReq := <-orderRequestCh:
