@@ -28,8 +28,8 @@ func (e *Elevator) NotifyMaster(msgType message.MessageType, event drivers.Butto
 	}
 
 	// Non-master behavior: prepare and broadcast the message over the network.
-	fmt.Printf("[ElevatorTransceiver] Sending message type: %s, Floor: %d, Button: %s\n",
-		utils.MessageTypeToString(msgType), event.Floor, utils.ButtonTypeToString(event.Button))
+	fmt.Printf("[ElevatorTransceiver] Sending MsgID: %s, type: %s, Floor: %d, Button: %s\n",
+		message.MsgCounter.Get(), utils.MessageTypeToString(msgType), event.Floor, utils.ButtonTypeToString(event.Button))
 
 	msg := message.Message{
 		Type:        msgType,
@@ -54,7 +54,7 @@ func (e *Elevator) NotifyMaster(msgType message.MessageType, event drivers.Butto
 	for {
 		select {
 		case <-tracker.Done:
-			fmt.Printf("[ElevatorTransceiver] All ACKs received for MsgID: %s, stopping broadcast to master\n", tracker.MsgID)
+			//fmt.Printf("[ElevatorTransceiver] All ACKs received for MsgID: %s, stopping broadcast to master\n", tracker.MsgID)
 			return
 		case <-ticker.C:
 			e.msgTx <- msg
