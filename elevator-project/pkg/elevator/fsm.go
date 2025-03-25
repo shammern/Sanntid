@@ -72,37 +72,70 @@ type Elevator struct {
 }
 
 func NewElevator(ElevatorID int, msgTx chan message.Message, counter *message.MsgID, trackerChan chan *message.AckTracker) *Elevator {
-	drivers.SetMotorDirection(drivers.MD_Up)
-	foundFloorChan := make(chan int)
-
-	go func() {
-		ticker := time.NewTicker(10 * time.Millisecond)
-		defer ticker.Stop()
-
-		for {
-			<-ticker.C
-			currentFloor := drivers.GetFloor()
-			if currentFloor != -1 {
-				foundFloorChan <- currentFloor
-				drivers.SetMotorDirection(drivers.MD_Stop)
-				return
-			}
-		}
-	}()
-
-	validFloor := <-foundFloorChan
-
 	return &Elevator{
 		ElevatorID:      ElevatorID,
-		state:           Init,
-		currentFloor:    validFloor,
-		RequestMatrix:   RM.NewRequestMatrix(config.NumFloors),
 		Orders:          make(chan Order, 10),
 		fsmEvents:       make(chan FsmEvent, 10),
 		msgTx:           msgTx,
 		counter:         counter,
 		travelDirection: Stop,
 		ackTrackerChan:  trackerChan,
+		RequestMatrix:   RM.NewRequestMatrix(config.NumFloors),
+	}
+}
+
+func (e *Elevator) InitElevator() {
+	resendTicker := time.NewTicker(config.ResendInterval)
+	defer resendTicker.Stop()
+
+	timeout := time.After(1 * time.Second)
+
+	recoveryMsg := message.Message{
+		Type:       message.RecoveryQuery,
+		MsgID:      fmt.Sprintf("%d-%d", config.ElevatorID, 0),
+		ElevatorID: config.ElevatorID,
+	}
+
+	tracker := message.NewAckTracker(recoveryMsg.MsgID, []int{config.ElevatorID})
+
+	e.ackTrackerChan <- tracker
+
+	fmt.Println("[INIT] Checking if backup exists on the network")
+
+	for {
+		select {
+		case <-resendTicker.C:
+			e.msgTx <- recoveryMsg
+
+		case <-tracker.Done:
+			return
+
+		case <-timeout:
+			fmt.Println("[INIT] Timeout, starting from scratch")
+			drivers.SetMotorDirection(drivers.MD_Up)
+			foundFloorChan := make(chan int)
+			go func() {
+				ticker := time.NewTicker(10 * time.Millisecond)
+				defer ticker.Stop()
+
+				for {
+					<-ticker.C
+					currentFloor := drivers.GetFloor()
+					if currentFloor != -1 {
+						foundFloorChan <- currentFloor
+						drivers.SetMotorDirection(drivers.MD_Stop)
+						return
+					}
+				}
+			}()
+
+			validFloor := <-foundFloorChan
+
+			e.state = Init
+			e.currentFloor = validFloor
+			e.RequestMatrix = RM.NewRequestMatrix(config.NumFloors)
+			return
+		}
 	}
 }
 
@@ -201,6 +234,7 @@ func (e *Elevator) handleNewOrder(newOrder Order) {
 func (e *Elevator) handleFSMEvent(ev FsmEvent) {
 	switch ev {
 	case EventArrivedAtFloor:
+		e.moveStartTime = time.Now()
 		e.currentFloor = drivers.GetFloor()
 		drivers.SetFloorIndicator(e.currentFloor)
 		if e.state == Init {
@@ -335,16 +369,10 @@ func (e *Elevator) SetHallLigths(matrix [][2]bool) {
 	}
 }
 
-func (e *Elevator) PrintRequestMatrix() {
-	fmt.Println("Request Matrix:")
-
-	fmt.Println("Cab Requests:")
-	for floor, req := range e.RequestMatrix.CabRequests {
-		fmt.Printf("  Floor %d: %v\n", floor, req)
-	}
-
-	fmt.Println("Hall Requests:")
-	for floor, hallReq := range e.RequestMatrix.HallRequests {
-		fmt.Printf("  Floor %d: Up: %v, Down: %v\n", floor, hallReq[0], hallReq[1])
-	}
+func (e *Elevator) RecoverState(stateData *message.ElevatorState) {
+	e.RequestMatrix.CabRequests = stateData.RequestMatrix.CabRequests
+	//e.travelDirection = Direction(stateData.Direction)
+	//e.state = ElevatorState(stateData.State)
+	fmt.Printf("[ElevatorFSM] Recovered cab orders: %v\n", e.RequestMatrix.CabRequests)
+	e.transitionTo(ElevatorState(stateData.State))
 }

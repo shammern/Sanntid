@@ -33,25 +33,12 @@ type Store struct {
 
 // NewStore creates a new Store.
 func NewStore() *Store {
-
 	store := &Store{
-		Elevators:     make(map[int]ElevatorStatus),
-		HallRequests:  make([][2]bool, config.NumFloors),
-		CurrentOrders: make(map[string][][2]bool),
+		Elevators:     make(map[int]ElevatorStatus), // start empty
+		HallRequests:  make([][2]bool, config.NumFloors), // still need one entry per floor
+		CurrentOrders: make(map[string][][2]bool),        // start empty
 	}
-
-	for id := 1; id <= 3; id++ {
-		// Create the ElevatorStatus instance.
-		status := ElevatorStatus{
-			ElevatorID:    id,
-			RequestMatrix: *RM.NewRequestMatrix(config.NumFloors),
-		}
-		store.Elevators[id] = status
-		store.CurrentOrders[strconv.Itoa(id)] = make([][2]bool, config.NumFloors)
-	}
-
 	return store
-
 }
 
 // UpdateStatus updates or adds an ElevatorStatus to the store.
@@ -59,6 +46,10 @@ func (s *Store) UpdateStatus(status ElevatorStatus) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.Elevators[status.ElevatorID] = status
+	key := strconv.Itoa(status.ElevatorID)
+	if _, exists := s.CurrentOrders[key]; !exists {
+		s.CurrentOrders[key] = make([][2]bool, config.NumFloors)
+	}
 }
 
 // GetAll returns a copy of all elevator statuses.

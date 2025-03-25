@@ -2,6 +2,7 @@ package app
 
 import (
 	"elevator-project/pkg/HRA"
+	RM "elevator-project/pkg/RequestMatrix"
 	"elevator-project/pkg/config"
 	"elevator-project/pkg/drivers"
 	"elevator-project/pkg/elevator"
@@ -19,75 +20,112 @@ var MasterQuerySent bool = false
 
 func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, msgTx chan message.Message, elevatorFSM *elevator.Elevator, trackerChan chan *message.AckTracker, masterAnnounced chan struct{}) {
 	for msg := range msgRx {
-		if msg.ElevatorID != config.ElevatorID {
+		if msg.Type != message.RecoveryState && msg.ElevatorID == config.ElevatorID {
+			continue
+		}
 
-			switch msg.Type {
-			case message.Ack:
-				ackChan <- msg
+		switch msg.Type {
+		case message.Ack:
+			ackChan <- msg
 
-			case message.OrderDelegation:
-				orderData := msg.OrderData
+		case message.OrderDelegation:
+			orderData := msg.OrderData
 
-				events := elevator.ConvertOrderDataToOrders(orderData)
-				for _, event := range events {
-					elevatorFSM.Orders <- event
-				}
+			events := elevator.ConvertOrderDataToOrders(orderData)
+			for _, event := range events {
+				elevatorFSM.Orders <- event
+			}
 
-				state.MasterStateStore.SetAllHallRequest(msg.HallRequests)
-				elevatorFSM.SetHallLigths(state.MasterStateStore.HallRequests)
+			state.MasterStateStore.SetAllHallRequest(msg.HallRequests)
+			elevatorFSM.SetHallLigths(state.MasterStateStore.HallRequests)
 
-				SendAck(msg, msgTx)
+			SendAck(msg, msgTx)
 
-			case message.CompletedOrder:
-				//TODO: Notify
-				SendAck(msg, msgTx)
-				fmt.Printf("[MH] Order has been completed: ElevatorID: %d, Floor: %d, ButtonType: %s\n", msg.ElevatorID, msg.ButtonEvent.Floor, utils.ButtonTypeToString(msg.ButtonEvent.Button))
-				state.MasterStateStore.ClearOrder(msg.ButtonEvent, msg.ElevatorID)
-				state.MasterStateStore.ClearHallRequest(msg.ButtonEvent)
-				elevatorFSM.SetHallLigths(state.MasterStateStore.HallRequests)
+		case message.CompletedOrder:
+			//TODO: Notify
+			SendAck(msg, msgTx)
+			fmt.Printf("[MH] Order has been completed: ElevatorID: %d, Floor: %d, ButtonType: %s\n", msg.ElevatorID, msg.ButtonEvent.Floor, utils.ButtonTypeToString(msg.ButtonEvent.Button))
+			//state.MasterStateStore.ClearOrder(msg.ButtonEvent, msg.ElevatorID)
+			state.MasterStateStore.ClearHallRequest(msg.ButtonEvent)
+			elevatorFSM.SetHallLigths(state.MasterStateStore.HallRequests)
 
-			case message.ButtonEvent:
+		case message.ButtonEvent:
 
-				if config.IsMaster {
-					switch msg.ButtonEvent.Button {
-					case drivers.BT_HallDown, drivers.BT_HallUp:
-						if !state.MasterStateStore.GetHallOrders()[msg.ButtonEvent.Floor][int(msg.ButtonEvent.Button)] {
-							state.MasterStateStore.SetHallRequest(msg.ButtonEvent)
-						}
+			if config.IsMaster {
+				switch msg.ButtonEvent.Button {
+				case drivers.BT_HallDown, drivers.BT_HallUp:
+					if !state.MasterStateStore.GetHallOrders()[msg.ButtonEvent.Floor][int(msg.ButtonEvent.Button)] {
+						state.MasterStateStore.SetHallRequest(msg.ButtonEvent)
+					}
 
-					case drivers.BT_Cab:
-						if !state.MasterStateStore.Elevators[msg.ElevatorID].RequestMatrix.CabRequests[msg.ButtonEvent.Floor] {
-							state.MasterStateStore.Elevators[msg.ElevatorID].RequestMatrix.CabRequests[msg.ButtonEvent.Floor] = true
-						}
+				case drivers.BT_Cab:
+					if !state.MasterStateStore.Elevators[msg.ElevatorID].RequestMatrix.CabRequests[msg.ButtonEvent.Floor] {
+						state.MasterStateStore.Elevators[msg.ElevatorID].RequestMatrix.CabRequests[msg.ButtonEvent.Floor] = true
 					}
 				}
-				SendAck(msg, msgTx)
+			}
+			SendAck(msg, msgTx)
 
-			case message.State:
-				status := state.ElevatorStatus{
-					ElevatorID:      msg.ElevatorID,
-					State:           msg.StateData.State,
-					CurrentFloor:    msg.StateData.CurrentFloor,
-					TravelDirection: msg.StateData.TravelDirection,
-					RequestMatrix:   msg.StateData.RequestMatrix,
-					LastUpdated:     msg.StateData.LastUpdated,
-					Available:       msg.StateData.Available,
+		case message.State:
+			status := state.ElevatorStatus{
+				ElevatorID:      msg.ElevatorID,
+				State:           msg.StateData.State,
+				CurrentFloor:    msg.StateData.CurrentFloor,
+				TravelDirection: msg.StateData.TravelDirection,
+				RequestMatrix:   msg.StateData.RequestMatrix,
+				LastUpdated:     msg.StateData.LastUpdated,
+				Available:       msg.StateData.Available,
+			}
+			state.MasterStateStore.UpdateStatus(status)
+
+		case message.MasterQuery:
+			go BroadcastMasterAnnouncement(msgTx, CurrentMasterID)
+
+		case message.MasterAnnouncement:
+			if msg.MasterID != CurrentMasterID {
+				fmt.Println("[MH] Received MasterAnnouncement:", msg.MasterID)
+				CurrentMasterID = msg.MasterID
+				config.IsMaster = (config.ElevatorID == CurrentMasterID)
+
+				select {
+				case masterAnnounced <- struct{}{}:
+				default:
 				}
-				state.MasterStateStore.UpdateStatus(status)
+			}
 
-			case message.MasterQuery:
-				go BroadcastMasterAnnouncement(msgTx, CurrentMasterID)
+		case message.RecoveryState:
+			if msg.ElevatorID == config.ElevatorID {
+				ackChan <- message.Message{
+					ElevatorID: config.ElevatorID, 
+					AckID: fmt.Sprintf("%d-%d", config.ElevatorID, 0),
+				}
+				fmt.Printf("[MH] RecoverState received from master\n")
+				elevatorFSM.RecoverState(msg.StateData)
+			}
 
-			case message.MasterAnnouncement:
-				if msg.MasterID != CurrentMasterID {
-					fmt.Println("[MH] Received MasterAnnouncement:", msg.MasterID)
-					CurrentMasterID = msg.MasterID
-					config.IsMaster = (config.ElevatorID == CurrentMasterID)
-
-					select {
-					case masterAnnounced <- struct{}{}:
-					default:
+		case message.RecoveryQuery:
+			if config.IsMaster {
+				var recoverStateData *message.ElevatorState
+				if status, exists := state.MasterStateStore.Elevators[msg.ElevatorID]; exists {
+					// If a record exists, include the stored cab orders.
+					recoverStateData = &message.ElevatorState{
+						ElevatorID:      status.ElevatorID,
+						State:           status.State,
+						CurrentFloor:    status.CurrentFloor,
+						TravelDirection: status.TravelDirection,
+						RequestMatrix: RM.RequestMatrix{
+							CabRequests: status.RequestMatrix.CabRequests,
+						},
 					}
+
+					recoverMsg := message.Message{
+						Type:       message.RecoveryState,
+						ElevatorID: msg.ElevatorID,
+						StateData:  recoverStateData,
+					}
+
+					msgTx <- recoverMsg
+
 				}
 			}
 		}
@@ -118,29 +156,6 @@ func StartWorldviewBC(e *elevator.Elevator, msgTx chan message.Message, counter 
 		}
 
 		msgTx <- stateMsg
-	}
-}
-
-func DebugPrintStateStore() {
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
-	for range ticker.C {
-		fmt.Println("----- Current Elevator States -----")
-		statuses := state.MasterStateStore.GetAll()
-
-		for id, status := range statuses {
-			fmt.Printf("Elevator %d:\n", id)
-			fmt.Printf("  ElevatorID   : %d\n", status.ElevatorID)
-			//fmt.Printf("  State        : %s\n", HRA.StateIntToString(status.State))
-			fmt.Printf("  Available        : %t\n", status.Available)
-			fmt.Printf("  CurrentFloor : %d\n", status.CurrentFloor)
-			//fmt.Printf("  TravelingDirection  : %s\n", HRA.DirectionIntToString(status.TravelDirection))
-			fmt.Printf("  LastUpdated  : %v\n", status.LastUpdated.Format("15:04:05"))
-			fmt.Printf("  HallRequests : %+v\n", status.RequestMatrix.HallRequests)
-			fmt.Printf("  CabRequests  : %+v\n", status.RequestMatrix.CabRequests)
-			fmt.Println()
-		}
-		fmt.Println("-----------------------------------")
 	}
 }
 
