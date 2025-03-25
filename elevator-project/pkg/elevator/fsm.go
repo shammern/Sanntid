@@ -40,6 +40,14 @@ const (
 	Stop           = 0
 )
 
+type ErrorType int
+
+const (
+	ErrorNone ErrorType = iota
+	ErrorDoorTimeout
+	ErrorMotorFailure
+)
+
 type Order struct {
 	Event drivers.ButtonEvent
 	Flag  bool
@@ -47,17 +55,21 @@ type Order struct {
 
 // used for internal elevator logic and handlig
 type Elevator struct {
-	ElevatorID      int
-	state           ElevatorState
-	currentFloor    int
-	travelDirection Direction
-	RequestMatrix   *RM.RequestMatrix
-	Orders          chan Order
-	fsmEvents       chan FsmEvent
-	doorTimer       *time.Timer
-	msgTx           chan message.Message
-	ackTrackerChan  chan *message.AckTracker
-	counter         *message.MsgID
+	ElevatorID          int
+	state               ElevatorState
+	currentFloor        int
+	travelDirection     Direction
+	RequestMatrix       *RM.RequestMatrix
+	Orders              chan Order
+	fsmEvents           chan FsmEvent
+	doorTimer           *time.Timer
+	msgTx               chan message.Message
+	ackTrackerChan      chan *message.AckTracker
+	counter             *message.MsgID
+	doorOpenStartTime   time.Time
+	moveStartTime       time.Time
+	errorTrigger        ErrorType
+	lastRecoveryAttempt time.Time
 }
 
 func NewElevator(ElevatorID int, msgTx chan message.Message, counter *message.MsgID, trackerChan chan *message.AckTracker) *Elevator {
@@ -125,7 +137,38 @@ func (e *Elevator) Run() {
 					e.travelDirection = newDirection
 				}
 			}
+			// Error check for door open states:
+			if (e.state == DoorOpen || e.state == DoorObstructed) &&
+				time.Since(e.doorOpenStartTime) > 10*time.Second {
+				e.errorTrigger = ErrorDoorTimeout
+				e.fsmEvents <- EventSetError
+			}
+
+			// Error check for moving states:
+			if (e.state == MovingUp || e.state == MovingDown) &&
+				//drivers.GetFloor() == -1 &&
+				time.Since(e.moveStartTime) > 10*time.Second {
+				e.errorTrigger = ErrorMotorFailure
+				e.fsmEvents <- EventSetError
+			}
+
+			if e.state == Error && e.errorTrigger == ErrorMotorFailure {
+				if time.Since(e.lastRecoveryAttempt) > 3*time.Second {
+					fmt.Println("[ElevatorFSM: Recovery] Motor error: attempting recovery")
+					if e.travelDirection == Up {
+						drivers.SetMotorDirection(drivers.MD_Up)
+						e.travelDirection = Down
+					} else {
+						drivers.SetMotorDirection(drivers.MD_Down)
+						e.travelDirection = Up
+					}
+					e.lastRecoveryAttempt = time.Now()
+
+				}
+			}
+
 			time.Sleep(10 * time.Millisecond) //blocking -> should find a better solution
+
 		}
 	}
 }
@@ -170,12 +213,14 @@ func (e *Elevator) handleFSMEvent(ev FsmEvent) {
 			e.transitionTo(Idle)
 			return
 		}
+
 		if e.shouldStop() {
 			go e.clearHallReqsAtFloor()
 			drivers.SetMotorDirection(drivers.MD_Stop)
 			drivers.SetDoorOpenLamp(true)
 			e.transitionTo(DoorOpen)
 		}
+
 	case EventDoorTimerElapsed:
 		if e.state == DoorOpen {
 			drivers.SetDoorOpenLamp(false)
@@ -196,10 +241,13 @@ func (e *Elevator) handleFSMEvent(ev FsmEvent) {
 		if e.state == DoorOpen {
 			e.transitionTo(DoorObstructed)
 		}
+
 	case EventDoorReleased:
-		if e.state == DoorObstructed {
+		if e.state == DoorObstructed || e.state == Error {
 			e.transitionTo(DoorOpen)
+			e.errorTrigger = ErrorNone
 		}
+
 	case EventSetError:
 		e.transitionTo(Error)
 		drivers.SetMotorDirection(drivers.MD_Stop)
@@ -211,12 +259,16 @@ func (e *Elevator) transitionTo(newState ElevatorState) {
 	switch newState {
 	case Init:
 		fmt.Println("[ElevatorFSM] State = Init")
+
 	case Idle:
 		e.travelDirection = Stop
 		fmt.Println("[ElevatorFSM] State = Idle")
+
 	case DoorOpen:
 		fmt.Println("[ElevatorFSM] State = DoorOpen")
 		e.doorTimer = time.NewTimer(3 * time.Second)
+		e.doorOpenStartTime = time.Now()
+
 	case DoorObstructed:
 		if e.doorTimer != nil {
 			if !e.doorTimer.Stop() {
@@ -225,14 +277,23 @@ func (e *Elevator) transitionTo(newState ElevatorState) {
 			e.doorTimer = nil
 		}
 		fmt.Println("[ElevatorFSM] State = DoorObstructed")
+
+		//if e.doorOpenStartTime.IsZero() {
+		//    e.doorOpenStartTime = time.Now()
+		//}
+
 	case MovingUp:
 		e.travelDirection = Up
 		fmt.Println("[ElevatorFSM] State = MovingUp")
 		drivers.SetMotorDirection(drivers.MD_Up)
+		e.moveStartTime = time.Now()
+
 	case MovingDown:
 		e.travelDirection = Down
 		fmt.Println("[ElevatorFSM] State = MovingDown")
 		drivers.SetMotorDirection(drivers.MD_Down)
+		e.moveStartTime = time.Now()
+
 	case Error:
 		fmt.Println("[ElevatorFSM] State = Error")
 		drivers.SetMotorDirection(drivers.MD_Stop)

@@ -19,6 +19,7 @@ func MonitorMasterHeartbeat(store *state.Store, msgTx chan message.Message) {
 	for range ticker.C {
 		alive := utils.GetAliveElevators(state.MasterStateStore, masterTimeout)
 
+
 		if contains(alive, CurrentMasterID) {
 			continue // Master is still alive
 		}
