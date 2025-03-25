@@ -17,7 +17,6 @@ var BackupElevatorID int = -1
 var MasterQueryTimer *time.Timer
 var MasterQuerySent bool = false
 
-func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, msgTx chan message.Message, elevatorFSM *elevator.Elevator, trackerChan chan *message.AckTracker) {
 	for msg := range msgRx {
 		if msg.ElevatorID != config.ElevatorID {
 
@@ -79,24 +78,9 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 				state.MasterStateStore.UpdateStatus(status)
 
 			case message.MasterQuery:
-				// Always respond with your known master (even if you're not master yourself)
-				response := message.Message{
-					Type:     message.MasterAnnouncement,
-					MasterID: CurrentMasterID,
-				}
-				msgTx <- response
 
 			case message.MasterAnnouncement:
-				fmt.Println("[MH] Received MasterAnnouncement:", msg.MasterID)
-				CurrentMasterID = msg.MasterID
-				config.IsMaster = (config.ElevatorID == msg.MasterID)
-
-				// Cancel election timer if waiting
-				if MasterQueryTimer != nil {
-					MasterQueryTimer.Stop()
-					MasterQueryTimer = nil
 				}
-
 			}
 		}
 	}
@@ -302,21 +286,7 @@ func OrderSenderWorker(orderRequestCh <-chan HRA.OrderData, msgTx chan message.M
 	}
 }
 
-func InitMasterDiscovery(msgTx chan message.Message) {
-	go func() {
-		fmt.Println("[Startup] Sending MasterQuery")
 
-		msgTx <- message.Message{
-			Type:       message.MasterQuery,
-			ElevatorID: config.ElevatorID,
-		}
 
-		MasterQuerySent = true
-		MasterQueryTimer = time.NewTimer(750 * time.Millisecond)
 
-		<-MasterQueryTimer.C
-
-		fmt.Println("[Startup] No MasterAnnouncement received — starting heartbeat/election loop")
-		go MonitorMasterHeartbeat(state.MasterStateStore, msgTx)
-	}()
 }

@@ -90,18 +90,6 @@ func GetActiveElevators() []int {
 	return peerIDs
 }
 
-/*
-func PrintAckTracker(a message.AckTracker) {
-	fmt.Println("AckTracker Details:")
-	fmt.Printf("  MsgID: %s\n", a.MsgID)
-	fmt.Printf("  SentTime: %v\n", a.SentTime)
-	fmt.Println("  ExpectedAcks:")
-	for id, acked := range a.ExpectedAcks {
-		fmt.Printf("    Elevator %d: %t\n", id, acked)
-	}
-}
-*/
-
 // CompareMaps returns true if the two maps are equal.
 // Two maps are considered equal if they have the same keys, and for each key,
 // the corresponding slice of [2]bool arrays is of the same length and contains identical arrays.

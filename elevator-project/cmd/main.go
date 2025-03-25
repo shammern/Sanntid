@@ -36,11 +36,9 @@ func main() {
 
 	go elevator.Run()
 	go ackMonitor.RunAckMonitor()
-	go app.MessageHandler(msgRx, ackChan, msgTx, elevator, ackTrackerChan)
 	go app.MonitorSystemInputs(elevator)
 	go peers.P2Pmonitor(state.MasterStateStore)
 	go app.StartWorldviewBC(elevator, msgTx, msgCounter)
-	go app.InitMasterDiscovery(msgTx)
 	go HRA.HRALoop(elevator, msgTx, ackTrackerChan, msgCounter, orderChan)
 	go app.OrderSenderWorker(orderChan, msgTx, ackTrackerChan, msgCounter)
 
