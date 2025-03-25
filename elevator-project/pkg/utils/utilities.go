@@ -5,7 +5,10 @@ import (
 	"elevator-project/pkg/drivers"
 	"elevator-project/pkg/message"
 	"elevator-project/pkg/network/peers"
+	"elevator-project/pkg/state"
+	"sort"
 	"strconv"
+	"time"
 )
 
 func ButtonTypeToString(b drivers.ButtonType) string {
@@ -90,18 +93,6 @@ func GetActiveElevators() []int {
 	return peerIDs
 }
 
-/*
-func PrintAckTracker(a message.AckTracker) {
-	fmt.Println("AckTracker Details:")
-	fmt.Printf("  MsgID: %s\n", a.MsgID)
-	fmt.Printf("  SentTime: %v\n", a.SentTime)
-	fmt.Println("  ExpectedAcks:")
-	for id, acked := range a.ExpectedAcks {
-		fmt.Printf("    Elevator %d: %t\n", id, acked)
-	}
-}
-*/
-
 // CompareMaps returns true if the two maps are equal.
 // Two maps are considered equal if they have the same keys, and for each key,
 // the corresponding slice of [2]bool arrays is of the same length and contains identical arrays.
@@ -127,4 +118,25 @@ func CompareMaps(m1, m2 map[string][][2]bool) bool {
 	}
 
 	return true
+}
+
+// Returns a sorted list of elevator IDs that are alive (based on LastUpdated). Used for master
+func GetAliveElevators(store *state.Store, timeout time.Duration) []int {
+	statuses := store.GetAll()
+	var alive []int
+	for id, status := range statuses {
+		if time.Since(status.LastUpdated) <= timeout {
+			alive = append(alive, id)
+		}
+	}
+	sort.Ints(alive)
+	return alive
+}
+
+// Determines the new master by selecting the lowest alive ID.
+func ElectMaster(alive []int) (int, bool) {
+	if len(alive) == 0 {
+		return -1, false
+	}
+	return alive[0], true
 }

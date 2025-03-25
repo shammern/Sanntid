@@ -17,7 +17,7 @@ var BackupElevatorID int = -1
 var MasterQueryTimer *time.Timer
 var MasterQuerySent bool = false
 
-func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, msgTx chan message.Message, elevatorFSM *elevator.Elevator, trackerChan chan *message.AckTracker) {
+func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, msgTx chan message.Message, elevatorFSM *elevator.Elevator, trackerChan chan *message.AckTracker, masterAnnounced chan struct{}) {
 	for msg := range msgRx {
 		if msg.ElevatorID != config.ElevatorID {
 
@@ -76,24 +76,19 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 				state.MasterStateStore.UpdateStatus(status)
 
 			case message.MasterQuery:
-				// Always respond with your known master (even if you're not master yourself)
-				response := message.Message{
-					Type:     message.MasterAnnouncement,
-					MasterID: CurrentMasterID,
-				}
-				msgTx <- response
+				go BroadcastMasterAnnouncement(msgTx, CurrentMasterID)
 
 			case message.MasterAnnouncement:
-				fmt.Println("[MH] Received MasterAnnouncement:", msg.MasterID)
-				CurrentMasterID = msg.MasterID
-				config.IsMaster = (config.ElevatorID == msg.MasterID)
+				if msg.MasterID != CurrentMasterID {
+					fmt.Println("[MH] Received MasterAnnouncement:", msg.MasterID)
+					CurrentMasterID = msg.MasterID
+					config.IsMaster = (config.ElevatorID == CurrentMasterID)
 
-				// Cancel election timer if waiting
-				if MasterQueryTimer != nil {
-					MasterQueryTimer.Stop()
-					MasterQueryTimer = nil
+					select {
+					case masterAnnounced <- struct{}{}:
+					default:
+					}
 				}
-
 			}
 		}
 	}
@@ -276,23 +271,29 @@ func OrderSenderWorker(orderRequestCh <-chan HRA.OrderData, msgTx chan message.M
 	}
 }
 
+func InitMasterDiscovery(msgTx chan message.Message, masterAnnounced <-chan struct{}) {
+	fmt.Println("[Startup] Sending MasterQuery")
+	ticker := time.NewTicker(config.ResendInterval)
+	defer ticker.Stop()
 
-func InitMasterDiscovery(msgTx chan message.Message) {
-	go func() {
-		fmt.Println("[Startup] Sending MasterQuery")
+	MasterQueryTimer = time.NewTimer(config.QueryMasterTimer)
+	defer MasterQueryTimer.Stop()
 
-		msgTx <- message.Message{
-			Type:       message.MasterQuery,
-			ElevatorID: config.ElevatorID,
+	for {
+		select {
+		case <-ticker.C:
+			msgTx <- message.Message{
+				Type:       message.MasterQuery,
+				ElevatorID: config.ElevatorID,
+			}
+		case <-masterAnnounced:
+			fmt.Println("[Startup] MasterAnnouncement received — cancelling discovery")
+			return
+
+		case <-MasterQueryTimer.C:
+			fmt.Println("[Startup] No MasterAnnouncement received — starting heartbeat/election loop")
+			go MonitorMasterHeartbeat(state.MasterStateStore, msgTx)
+			return
 		}
-
-		MasterQuerySent = true
-		MasterQueryTimer = time.NewTimer(750 * time.Millisecond)
-
-		<-MasterQueryTimer.C
-
-		fmt.Println("[Startup] No MasterAnnouncement received — starting heartbeat/election loop")
-		go MonitorMasterHeartbeat(state.MasterStateStore, msgTx)
-	}()
+	}
 }
-
