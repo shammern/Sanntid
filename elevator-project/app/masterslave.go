@@ -5,7 +5,6 @@ import (
 	"elevator-project/pkg/message"
 	"elevator-project/pkg/state"
 	"fmt"
-	"log"
 	"sort"
 	"time"
 )
@@ -28,7 +27,7 @@ func MonitorMasterHeartbeat(store *state.Store, msgTx chan message.Message) {
 		masterAlive := exists && time.Since(masterStatus.LastUpdated) <= masterTimeout
 		isSelfMaster := (CurrentMasterID == config.ElevatorID)
 
-		log.Printf("[DEBUG] CurrentMasterID: %d, masterAlive: %v\n", CurrentMasterID, config.IsMaster)
+		//log.Printf("[DEBUG] CurrentMasterID: %d, masterAlive: %v\n", CurrentMasterID, config.IsMaster)
 		// Update our own master flag
 		config.IsMaster = isSelfMaster && masterAlive
 
