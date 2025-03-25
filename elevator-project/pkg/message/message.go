@@ -24,8 +24,8 @@ const (
 	CompletedOrder
 	Ack
 	Heartbeat
-	MasterAnnouncement // Ny meldingstype for å annonsere hvem som er master
-	MasterQuery        // Melding for å spørre "Hvem er master?"
+	MasterAnnouncement 
+	MasterQuery        
 	RecoveryQuery
 	RecoveryState
 )

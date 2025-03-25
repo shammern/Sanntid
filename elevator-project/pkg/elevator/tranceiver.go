@@ -51,6 +51,8 @@ func (e *Elevator) NotifyMaster(msgType message.MessageType, event drivers.Butto
 	ticker := time.NewTicker(config.ResendInterval)
 	defer ticker.Stop()
 
+	timeout := time.After(config.MsgTimeout)
+
 	for {
 		select {
 		case <-tracker.Done:
@@ -58,12 +60,12 @@ func (e *Elevator) NotifyMaster(msgType message.MessageType, event drivers.Butto
 			return
 		case <-ticker.C:
 			e.msgTx <- msg
+
+		case <-timeout:
+			fmt.Println("[ElevatorFSM] Message timed out, stopping sending")
+			return
 		}
 	}
-	//}
-
-	// For cab button events, simply send the message.
-	//e.msgTx <- msg
 }
 
 // Takes a ordermap and extract the orders for the currentelevator. Orders are packed into a list and returned.

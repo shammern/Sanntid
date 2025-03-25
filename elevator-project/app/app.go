@@ -7,6 +7,7 @@ import (
 	"elevator-project/pkg/drivers"
 	"elevator-project/pkg/elevator"
 	"elevator-project/pkg/message"
+	"elevator-project/pkg/network/peers"
 	"elevator-project/pkg/state"
 	"elevator-project/pkg/utils"
 	"fmt"
@@ -14,9 +15,6 @@ import (
 )
 
 var CurrentMasterID int = -1
-var BackupElevatorID int = -1
-var MasterQueryTimer *time.Timer
-var MasterQuerySent bool = false
 
 func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, msgTx chan message.Message, elevatorFSM *elevator.Elevator, trackerChan chan *message.AckTracker, masterAnnounced chan struct{}) {
 	for msg := range msgRx {
@@ -78,6 +76,10 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 			}
 			state.MasterStateStore.UpdateStatus(status)
 
+			if msg.ElevatorID == CurrentMasterID {
+				state.MasterStateStore.HallRequests = msg.HallRequests
+			}
+
 		case message.MasterQuery:
 			go BroadcastMasterAnnouncement(msgTx, CurrentMasterID)
 
@@ -96,8 +98,8 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 		case message.RecoveryState:
 			if msg.ElevatorID == config.ElevatorID {
 				ackChan <- message.Message{
-					ElevatorID: config.ElevatorID, 
-					AckID: fmt.Sprintf("%d-%d", config.ElevatorID, 0),
+					ElevatorID: config.ElevatorID,
+					AckID:      fmt.Sprintf("%d-%d", config.ElevatorID, 0),
 				}
 				fmt.Printf("[MH] RecoverState received from master\n")
 				elevatorFSM.RecoverState(msg.StateData)
@@ -175,12 +177,15 @@ func MonitorSystemInputs(elevatorFSM *elevator.Elevator) {
 		case be := <-drvButtons:
 
 			if config.IsMaster {
-				state.MasterStateStore.SetHallRequest(be)
+				if len(peers.LatestPeerUpdate.Peers) > 1 {
+					state.MasterStateStore.SetHallRequest(be)
+				} else {
+					fmt.Println("[ERROR] Elevator is offline and wont service hallcalls")
+				}
 			} else {
 				elevatorFSM.NotifyMaster(message.ButtonEvent, be)
 			}
 
-			//If internal event(cab button) add order directly to request matrix
 			if be.Button == drivers.BT_Cab {
 				order := elevator.Order{
 					Event: be,
@@ -202,7 +207,7 @@ func MonitorSystemInputs(elevatorFSM *elevator.Elevator) {
 			}
 
 		case <-drvStop:
-			//TODO: Implemnt stop logic
+			//No stop logic has been implemented.
 		}
 	}
 }
@@ -213,8 +218,7 @@ func SendAck(msg message.Message, msgTx chan message.Message) {
 	ackMsg := message.Message{
 		Type:       message.Ack,
 		ElevatorID: config.ElevatorID,
-		//MsgID:      msgID.Get(),
-		AckID: msg.MsgID,
+		AckID:      msg.MsgID,
 	}
 
 	msgTx <- ackMsg
@@ -227,7 +231,6 @@ func OrderSenderWorker(orderRequestCh <-chan HRA.OrderData, msgTx chan message.M
 	resendTicker := time.NewTicker(config.ResendInterval)
 	defer resendTicker.Stop()
 
-	// Use a for-select loop that also listens for new orders.
 	for {
 		if config.IsMaster {
 			select {
@@ -282,33 +285,6 @@ func OrderSenderWorker(orderRequestCh <-chan HRA.OrderData, msgTx chan message.M
 					}
 				}
 			}
-		}
-	}
-}
-
-func InitMasterDiscovery(msgTx chan message.Message, masterAnnounced <-chan struct{}) {
-	fmt.Println("[Startup] Sending MasterQuery")
-	ticker := time.NewTicker(config.ResendInterval)
-	defer ticker.Stop()
-
-	MasterQueryTimer = time.NewTimer(config.QueryMasterTimer)
-	defer MasterQueryTimer.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			msgTx <- message.Message{
-				Type:       message.MasterQuery,
-				ElevatorID: config.ElevatorID,
-			}
-		case <-masterAnnounced:
-			fmt.Println("[Startup] MasterAnnouncement received — cancelling discovery")
-			return
-
-		case <-MasterQueryTimer.C:
-			fmt.Println("[Startup] No MasterAnnouncement received — starting heartbeat/election loop")
-			go MonitorMasterHeartbeat(state.MasterStateStore, msgTx)
-			return
 		}
 	}
 }

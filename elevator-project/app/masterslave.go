@@ -9,15 +9,13 @@ import (
 	"time"
 )
 
-const masterTimeout = 3 * time.Second
-
 // Monitor master heartbeat and elect a new master if necessary
 func MonitorMasterHeartbeat(store *state.Store, msgTx chan message.Message) {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
 	for range ticker.C {
-		alive := utils.GetAliveElevators(state.MasterStateStore, masterTimeout)
+		alive := utils.GetAliveElevators(state.MasterStateStore, config.MasterTimeout)
 
 
 		if contains(alive, CurrentMasterID) {
@@ -66,3 +64,32 @@ func contains(slice []int, val int) bool {
 	}
 	return false
 }
+
+
+func InitMasterDiscovery(msgTx chan message.Message, masterAnnounced <-chan struct{}) {
+	fmt.Println("[INIT] Sending MasterQuery")
+	ticker := time.NewTicker(config.ResendInterval)
+	defer ticker.Stop()
+
+	MasterQueryTimer := time.NewTimer(config.QueryMasterTimer)
+	defer MasterQueryTimer.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			msgTx <- message.Message{
+				Type:       message.MasterQuery,
+				ElevatorID: config.ElevatorID,
+			}
+		case <-masterAnnounced:
+			fmt.Println("[INIT] MasterAnnouncement received")
+			return
+
+		case <-MasterQueryTimer.C:
+			fmt.Println("[INIT] No MasterAnnouncement received, starting heartbeat/election loop")
+			go MonitorMasterHeartbeat(state.MasterStateStore, msgTx)
+			return
+		}
+	}
+}
+

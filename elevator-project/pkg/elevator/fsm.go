@@ -102,13 +102,14 @@ func (e *Elevator) InitElevator() {
 
 	fmt.Println("[INIT] Checking if backup exists on the network")
 
+Loop:
 	for {
 		select {
 		case <-resendTicker.C:
 			e.msgTx <- recoveryMsg
 
 		case <-tracker.Done:
-			return
+			break Loop
 
 		case <-timeout:
 			fmt.Println("[INIT] Timeout, starting from scratch")
@@ -124,7 +125,8 @@ func (e *Elevator) InitElevator() {
 					if currentFloor != -1 {
 						foundFloorChan <- currentFloor
 						drivers.SetMotorDirection(drivers.MD_Stop)
-						return
+
+						break
 					}
 				}
 			}()
@@ -134,8 +136,11 @@ func (e *Elevator) InitElevator() {
 			e.state = Init
 			e.currentFloor = validFloor
 			e.RequestMatrix = RM.NewRequestMatrix(config.NumFloors)
-			return
+			break Loop
 		}
+	}
+	for i := 0; i < config.NumFloors-1; i++ {
+		drivers.SetButtonLamp(drivers.BT_Cab, i, e.RequestMatrix.CabRequests[i])
 	}
 }
 
