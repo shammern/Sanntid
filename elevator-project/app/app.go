@@ -17,6 +17,7 @@ var BackupElevatorID int = -1
 var MasterQueryTimer *time.Timer
 var MasterQuerySent bool = false
 
+func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, msgTx chan message.Message, elevatorFSM *elevator.Elevator, trackerChan chan *message.AckTracker, masterAnnounced chan struct{}) {
 	for msg := range msgRx {
 		if msg.ElevatorID != config.ElevatorID {
 
@@ -78,8 +79,18 @@ var MasterQuerySent bool = false
 				state.MasterStateStore.UpdateStatus(status)
 
 			case message.MasterQuery:
+				go BroadcastMasterAnnouncement(msgTx, CurrentMasterID)
 
 			case message.MasterAnnouncement:
+				if msg.MasterID != CurrentMasterID {
+					fmt.Println("[MH] Received MasterAnnouncement:", msg.MasterID)
+					CurrentMasterID = msg.MasterID
+					config.IsMaster = (config.ElevatorID == CurrentMasterID)
+
+					select {
+					case masterAnnounced <- struct{}{}:
+					default:
+					}
 				}
 			}
 		}
@@ -277,7 +288,7 @@ func OrderSenderWorker(orderRequestCh <-chan HRA.OrderData, msgTx chan message.M
 
 				case newReq := <-orderRequestCh:
 					currentTracker.Terminate()
-			
+
 					req = newReq
 					break resendLoop
 				}
@@ -286,7 +297,29 @@ func OrderSenderWorker(orderRequestCh <-chan HRA.OrderData, msgTx chan message.M
 	}
 }
 
+func InitMasterDiscovery(msgTx chan message.Message, masterAnnounced <-chan struct{}) {
+	fmt.Println("[Startup] Sending MasterQuery")
+	ticker := time.NewTicker(config.ResendInterval)
+	defer ticker.Stop()
 
+	MasterQueryTimer = time.NewTimer(config.QueryMasterTimer)
+	defer MasterQueryTimer.Stop()
 
+	for {
+		select {
+		case <-ticker.C:
+			msgTx <- message.Message{
+				Type:       message.MasterQuery,
+				ElevatorID: config.ElevatorID,
+			}
+		case <-masterAnnounced:
+			fmt.Println("[Startup] MasterAnnouncement received — cancelling discovery")
+			return
 
+		case <-MasterQueryTimer.C:
+			fmt.Println("[Startup] No MasterAnnouncement received — starting heartbeat/election loop")
+			go MonitorMasterHeartbeat(state.MasterStateStore, msgTx)
+			return
+		}
+	}
 }

@@ -28,6 +28,7 @@ func main() {
 	ackChan := make(chan message.Message)
 	ackTrackerChan := make(chan *message.AckTracker)
 	orderChan := make(chan HRA.OrderData)
+	masterAnnounced := make(chan struct{}, 1) //Buffer size
 	go bcast.Transmitter(config.BCport, msgTx)
 	go bcast.Receiver(config.BCport, msgRx)
 
@@ -36,9 +37,11 @@ func main() {
 
 	go elevator.Run()
 	go ackMonitor.RunAckMonitor()
+	go app.MessageHandler(msgRx, ackChan, msgTx, elevator, ackTrackerChan, masterAnnounced)
 	go app.MonitorSystemInputs(elevator)
 	go peers.P2Pmonitor(state.MasterStateStore)
 	go app.StartWorldviewBC(elevator, msgTx, msgCounter)
+	go app.InitMasterDiscovery(msgTx, masterAnnounced)
 	go HRA.HRALoop(elevator, msgTx, ackTrackerChan, msgCounter, orderChan)
 	go app.OrderSenderWorker(orderChan, msgTx, ackTrackerChan, msgCounter)
 

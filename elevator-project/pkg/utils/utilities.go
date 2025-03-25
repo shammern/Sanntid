@@ -5,7 +5,10 @@ import (
 	"elevator-project/pkg/drivers"
 	"elevator-project/pkg/message"
 	"elevator-project/pkg/network/peers"
+	"elevator-project/pkg/state"
+	"sort"
 	"strconv"
+	"time"
 )
 
 func ButtonTypeToString(b drivers.ButtonType) string {
@@ -115,4 +118,25 @@ func CompareMaps(m1, m2 map[string][][2]bool) bool {
 	}
 
 	return true
+}
+
+// Returns a sorted list of elevator IDs that are alive (based on LastUpdated). Used for master
+func GetAliveElevators(store *state.Store, timeout time.Duration) []int {
+	statuses := store.GetAll()
+	var alive []int
+	for id, status := range statuses {
+		if time.Since(status.LastUpdated) <= timeout {
+			alive = append(alive, id)
+		}
+	}
+	sort.Ints(alive)
+	return alive
+}
+
+// Determines the new master by selecting the lowest alive ID.
+func ElectMaster(alive []int) (int, bool) {
+	if len(alive) == 0 {
+		return -1, false
+	}
+	return alive[0], true
 }

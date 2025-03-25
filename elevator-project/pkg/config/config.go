@@ -24,6 +24,7 @@ const HeartBeatInterval = 5 * time.Millisecond
 const WorldviewBCInterval = 100 * time.Millisecond
 const ResendInterval = 10 * time.Millisecond
 const Timeout = 500 * time.Millisecond
+const QueryMasterTimer = 500 * time.Millisecond
 
 const BCport = 15500
 const P2Pport = 16000
