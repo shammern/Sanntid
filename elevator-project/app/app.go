@@ -14,6 +14,8 @@ import (
 
 var CurrentMasterID int = -1
 var BackupElevatorID int = -1
+var MasterQueryTimer *time.Timer
+var MasterQuerySent bool = false
 
 func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, msgTx chan message.Message, elevatorFSM *elevator.Elevator, trackerChan chan *message.AckTracker) {
 	for msg := range msgRx {
@@ -74,19 +76,24 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 				state.MasterStateStore.UpdateStatus(status)
 
 			case message.MasterQuery:
-				// Update our view of the current master.
-				fmt.Printf("[MH] Received master config update: new master is elevator %d\n", msg.ElevatorID)
-				CurrentMasterID = msg.ElevatorID
-				if config.ElevatorID != msg.ElevatorID {
-					config.IsMaster = false
-				} else {
-					config.IsMaster = true
+				// Always respond with your known master (even if you're not master yourself)
+				response := message.Message{
+					Type:     message.MasterAnnouncement,
+					MasterID: CurrentMasterID,
 				}
+				msgTx <- response
 
 			case message.MasterAnnouncement:
-				fmt.Printf("[INFO] Oppdaterer master til heis %d\n", msg.MasterID)
+				fmt.Println("[MH] Received MasterAnnouncement:", msg.MasterID)
 				CurrentMasterID = msg.MasterID
-				config.IsMaster = (config.ElevatorID == CurrentMasterID)
+				config.IsMaster = (config.ElevatorID == msg.MasterID)
+
+				// Cancel election timer if waiting
+				if MasterQueryTimer != nil {
+					MasterQueryTimer.Stop()
+					MasterQueryTimer = nil
+				}
+
 			}
 		}
 	}
@@ -269,39 +276,23 @@ func OrderSenderWorker(orderRequestCh <-chan HRA.OrderData, msgTx chan message.M
 	}
 }
 
-/*
-func SendOrder(newOrder map[string][][2]bool, msgTx chan message.Message, trackChan chan *message.AckTracker, msgID *message.MsgID) {
-	currentMsgID := msgID.Get()
-	tracker := message.NewAckTracker(currentMsgID, utils.GetActiveElevators())
 
-	//Acknowlegde own message
-	tracker.ExpectedAcks[config.ElevatorID] = true
+func InitMasterDiscovery(msgTx chan message.Message) {
+	go func() {
+		fmt.Println("[Startup] Sending MasterQuery")
 
-	trackChan <- tracker
-
-	ticker := time.NewTicker(config.ResendInterval)
-	defer ticker.Stop()
-
-	// Sending loop
-	orderMsg := message.Message{
-		Type:         message.OrderDelegation,
-		ElevatorID:   config.ElevatorID,
-		MsgID:        msgID.Next(),
-		OrderData:    newOrder,
-		HallRequests: state.MasterStateStore.HallRequests,
-	}
-
-	for {
-
-		select {
-		case <-tracker.Done:
-			fmt.Printf("[MH: Master] Terminating order broadcast for MsgID: %s\n", tracker.MsgID)
-			return
-
-		case <-ticker.C:
-			fmt.Println("[MH: Master] Resending order for MsgID:", orderMsg.MsgID)
-			msgTx <- orderMsg
+		msgTx <- message.Message{
+			Type:       message.MasterQuery,
+			ElevatorID: config.ElevatorID,
 		}
-	}
+
+		MasterQuerySent = true
+		MasterQueryTimer = time.NewTimer(750 * time.Millisecond)
+
+		<-MasterQueryTimer.C
+
+		fmt.Println("[Startup] No MasterAnnouncement received — starting heartbeat/election loop")
+		go MonitorMasterHeartbeat(state.MasterStateStore, msgTx)
+	}()
 }
-*/
+

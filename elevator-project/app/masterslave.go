@@ -5,6 +5,7 @@ import (
 	"elevator-project/pkg/message"
 	"elevator-project/pkg/state"
 	"fmt"
+	"log"
 	"sort"
 	"time"
 )
@@ -13,20 +14,28 @@ const masterTimeout = 3 * time.Second
 
 // Monitor master heartbeat and elect a new master if necessary
 func MonitorMasterHeartbeat(store *state.Store, msgTx chan message.Message) {
+
+	startupDelay := time.NewTimer(2 * time.Second)
+	<-startupDelay.C
+
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
 	for range ticker.C {
 
 		statuses := state.MasterStateStore.GetAll()
-
 		masterStatus, exists := statuses[CurrentMasterID]
-		// Check if current master is online, if yes do not change master
-		if CurrentMasterID != -1 && exists && time.Since(masterStatus.LastUpdated) <= masterTimeout {
-			continue
+		masterAlive := exists && time.Since(masterStatus.LastUpdated) <= masterTimeout
+		isSelfMaster := (CurrentMasterID == config.ElevatorID)
+
+		log.Printf("[DEBUG] CurrentMasterID: %d, masterAlive: %v\n", CurrentMasterID, config.IsMaster)
+		// Update our own master flag
+		config.IsMaster = isSelfMaster && masterAlive
+
+		if masterAlive {
+			continue // Master is alive, no need to elect a new one
 		}
 
-		//Reelect master, based on lowest id
 		activeElevators := []int{}
 		for id, status := range statuses {
 			if time.Since(status.LastUpdated) <= masterTimeout {
@@ -38,7 +47,7 @@ func MonitorMasterHeartbeat(store *state.Store, msgTx chan message.Message) {
 			newMaster := activeElevators[0]
 			if newMaster != CurrentMasterID {
 				CurrentMasterID = newMaster
-				//fmt.Printf("[INFO] Ny master er heis %d\n", CurrentMasterID)
+				fmt.Printf("[INFO] Ny master er heis %d\n", CurrentMasterID)
 				msgTx <- message.Message{
 					Type:     message.MasterAnnouncement,
 					MasterID: CurrentMasterID,
