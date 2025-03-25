@@ -53,6 +53,7 @@ func MonitorMasterHeartbeat(store *state.Store, msgTx chan message.Message) {
 					MasterID: CurrentMasterID,
 				}
 				config.IsMaster = (CurrentMasterID == config.ElevatorID)
+				fmt.Printf("Masterchange from MonitorMasterHeartbeat: %v\n", config.IsMaster)
 			}
 		} else {
 			CurrentMasterID = -1
