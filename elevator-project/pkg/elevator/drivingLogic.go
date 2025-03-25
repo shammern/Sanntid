@@ -101,7 +101,7 @@ func (e *Elevator) clearHallReqsAtFloor() {
 	case Up:
 		if e.RequestMatrix.HallRequests[e.currentFloor][0] {
 			e.RequestMatrix.HallRequests[e.currentFloor][0] = false
-			e.NotifyMaster(message.CompletedOrder, drivers.ButtonEvent{Floor: e.currentFloor, Button: drivers.BT_HallUp})
+			go e.NotifyMaster(message.CompletedOrder, drivers.ButtonEvent{Floor: e.currentFloor, Button: drivers.BT_HallUp})
 			drivers.SetButtonLamp(drivers.BT_HallUp, e.currentFloor, false)
 		} else if e.RequestMatrix.HallRequests[e.currentFloor][1] {
 			e.RequestMatrix.HallRequests[e.currentFloor][1] = false
@@ -112,39 +112,38 @@ func (e *Elevator) clearHallReqsAtFloor() {
 		if e.RequestMatrix.CabRequests[e.currentFloor] {
 			drivers.SetButtonLamp(drivers.BT_Cab, e.currentFloor, false)
 			e.RequestMatrix.CabRequests[e.currentFloor] = false
-			e.NotifyMaster(message.CompletedOrder, drivers.ButtonEvent{Floor: e.currentFloor, Button: drivers.BT_Cab})
+			go e.NotifyMaster(message.CompletedOrder, drivers.ButtonEvent{Floor: e.currentFloor, Button: drivers.BT_Cab})
 		}
 	case Down:
 		if e.RequestMatrix.HallRequests[e.currentFloor][1] {
 			e.RequestMatrix.HallRequests[e.currentFloor][1] = false
-			e.NotifyMaster(message.CompletedOrder, drivers.ButtonEvent{Floor: e.currentFloor, Button: drivers.BT_HallDown})
+			go e.NotifyMaster(message.CompletedOrder, drivers.ButtonEvent{Floor: e.currentFloor, Button: drivers.BT_HallDown})
 			drivers.SetButtonLamp(drivers.BT_HallDown, e.currentFloor, false)
 		} else if e.RequestMatrix.HallRequests[e.currentFloor][0] {
 			e.RequestMatrix.HallRequests[e.currentFloor][0] = false
-			e.NotifyMaster(message.CompletedOrder, drivers.ButtonEvent{Floor: e.currentFloor, Button: drivers.BT_HallUp})
+			go e.NotifyMaster(message.CompletedOrder, drivers.ButtonEvent{Floor: e.currentFloor, Button: drivers.BT_HallUp})
 			drivers.SetButtonLamp(drivers.BT_HallDown, e.currentFloor, false)
 		}
 
 		if e.RequestMatrix.CabRequests[e.currentFloor] {
 			drivers.SetButtonLamp(drivers.BT_Cab, e.currentFloor, false)
 			e.RequestMatrix.CabRequests[e.currentFloor] = false
-			e.NotifyMaster(message.CompletedOrder, drivers.ButtonEvent{Floor: e.currentFloor, Button: drivers.BT_Cab})
+			go e.NotifyMaster(message.CompletedOrder, drivers.ButtonEvent{Floor: e.currentFloor, Button: drivers.BT_Cab})
 		}
 	case Stop:
 		if e.RequestMatrix.CabRequests[e.currentFloor] {
 			e.RequestMatrix.CabRequests[e.currentFloor] = false
-			e.NotifyMaster(message.CompletedOrder, drivers.ButtonEvent{Floor: e.currentFloor, Button: drivers.BT_Cab})
+			go e.NotifyMaster(message.CompletedOrder, drivers.ButtonEvent{Floor: e.currentFloor, Button: drivers.BT_Cab})
 			drivers.SetButtonLamp(drivers.BT_Cab, e.currentFloor, false)
 		}
 
-
 		if e.RequestMatrix.HallRequests[e.currentFloor][0] {
 			e.RequestMatrix.HallRequests[e.currentFloor][0] = false
-			e.NotifyMaster(message.CompletedOrder, drivers.ButtonEvent{Floor: e.currentFloor, Button: drivers.BT_HallUp})
+			go e.NotifyMaster(message.CompletedOrder, drivers.ButtonEvent{Floor: e.currentFloor, Button: drivers.BT_HallUp})
 			drivers.SetButtonLamp(drivers.BT_HallUp, e.currentFloor, false)
 		} else if e.RequestMatrix.HallRequests[e.currentFloor][1] {
 			e.RequestMatrix.HallRequests[e.currentFloor][1] = false
-			e.NotifyMaster(message.CompletedOrder, drivers.ButtonEvent{Floor: e.currentFloor, Button: drivers.BT_HallDown})
+			go e.NotifyMaster(message.CompletedOrder, drivers.ButtonEvent{Floor: e.currentFloor, Button: drivers.BT_HallDown})
 			drivers.SetButtonLamp(drivers.BT_HallDown, e.currentFloor, false)
 
 		}
