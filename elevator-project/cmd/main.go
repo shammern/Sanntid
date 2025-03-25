@@ -40,6 +40,7 @@ func main() {
 	go app.InitMasterDiscovery(msgTx, masterAnnounced)
 	go app.MonitorMasterHeartbeat(state.MasterStateStore, msgTx)
 	elevator.InitElevator()
+	elevator.SetHallLigths(state.MasterStateStore.HallRequests)
 
 	go app.MonitorSystemInputs(elevator)
 

@@ -1,7 +1,6 @@
 package utils
 
 import (
-	"elevator-project/pkg/config"
 	"elevator-project/pkg/drivers"
 	"elevator-project/pkg/message"
 	"elevator-project/pkg/network/peers"
@@ -58,16 +57,6 @@ func MessageTypeToString(m message.MessageType) string {
 	default:
 		return "Unknown"
 	}
-}
-
-func GetOtherElevatorAddresses(ElevatorID int) []string {
-	others := []string{}
-	for id, address := range config.UDPAddresses {
-		if id != ElevatorID {
-			others = append(others, address)
-		}
-	}
-	return others
 }
 
 func ElevatorIntToString(num int) string {
