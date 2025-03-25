@@ -4,6 +4,7 @@ import (
 	"elevator-project/pkg/config"
 	"elevator-project/pkg/message"
 	"elevator-project/pkg/state"
+	"fmt"
 	"sort"
 	"time"
 )
@@ -43,6 +44,7 @@ func MonitorMasterHeartbeat(store *state.Store, msgTx chan message.Message) {
 					MasterID: CurrentMasterID,
 				}
 				config.IsMaster = (CurrentMasterID == config.ElevatorID)
+				fmt.Printf("Masterchange from MonitorMasterHeartbeat: %v\n", config.IsMaster)
 			}
 		} else {
 			CurrentMasterID = -1

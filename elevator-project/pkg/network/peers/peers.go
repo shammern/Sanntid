@@ -11,6 +11,8 @@ import (
 	"time"
 )
 
+var PeerLostCh = make(chan []int, 2)
+
 type PeerUpdate struct {
 	Peers []string
 	New   string
@@ -103,31 +105,26 @@ func P2Pmonitor(stateStore *state.Store) {
 		fmt.Printf("  New:      %q\n", update.New)
 		fmt.Printf("  Lost:     %q\n", update.Lost)
 
-		// Mark all peers in the Peers list as available.
-		for _, peerStr := range update.Peers {
-			if peerID, err := strconv.Atoi(peerStr); err == nil {
-				stateStore.UpdateElevatorAvailability(peerID, true)
-				fmt.Printf("Marked elevator %d as available\n", peerID)
-			} else {
-				fmt.Printf("Error parsing peer id %s: %v\n", peerStr, err)
-			}
-		}
-
 		// Mark lost peers as unavailable, but skip our own elevator id.
 		for _, lostPeer := range update.Lost {
-			// Skip if the lost peer is the local elevator.
 			if lostPeer == strconv.Itoa(config.ElevatorID) {
 				continue
 			}
 			if peerID, err := strconv.Atoi(lostPeer); err == nil {
 				stateStore.UpdateElevatorAvailability(peerID, false)
-				fmt.Printf("Marked elevator %d as unavailable\n", peerID)
-			} else {
-				fmt.Printf("Error parsing lost peer id %s: %v\n", lostPeer, err)
+				//fmt.Printf("Marked elevator %d as unavailable\n", peerID)
 			}
 		}
 
-		// Ensure our own elevator is always marked as available.
-		stateStore.UpdateElevatorAvailability(config.ElevatorID, true)
+		if len(update.Lost) > 0 {
+			var lostIDs []int
+			for _, lostPeer := range update.Lost {
+				if id, err := strconv.Atoi(lostPeer); err == nil {
+					lostIDs = append(lostIDs, id)
+				}
+
+				PeerLostCh <- lostIDs
+			}
+		}
 	}
 }

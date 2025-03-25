@@ -4,10 +4,16 @@ import (
 	RM "elevator-project/pkg/RequestMatrix"
 	"elevator-project/pkg/config"
 	"elevator-project/pkg/drivers"
+	"elevator-project/pkg/network/peers"
 	"fmt"
 	"sync"
 	"time"
 )
+
+var MsgCounter = MsgID{
+	elevatorID: config.ElevatorID,
+	id:         1,
+}
 
 type MessageType int
 
@@ -49,6 +55,13 @@ type MsgID struct {
 	mu         sync.Mutex
 	elevatorID int
 	id         int
+}
+
+func InitMsgCounter(elevatorID int) {
+	MsgCounter = MsgID{
+		elevatorID: elevatorID,
+		id:         1,
+	}
 }
 
 // Next returns a composite message identifier in the form "elevatorID-counter".
@@ -155,9 +168,9 @@ func (oa *OutstandingAcks) processAck(tracker *AckTracker, ack Message) {
 	}
 
 	if len(pending) > 0 {
-		fmt.Printf("[AckTracker] Still waiting for ACKs from elevators: %v\n", pending)
+		fmt.Printf("[AckTracker] Still waiting for ACKs from elevators: %v for message: %s\n", pending, tracker.MsgID)
 	} else {
-		//fmt.Printf("[AckTracker] All ACKs received for message %s\n", ack.AckID)
+		fmt.Printf("[AckTracker] All ACKs received for message %s\n", ack.AckID)
 		tracker.Terminate()
 		oa.DeleteAckTracker(ack.AckID)
 	}
@@ -179,6 +192,22 @@ func (oa *OutstandingAcks) RunAckMonitor() {
 			} else {
 				// Log the case where an ack is received for an unknown message.
 				//fmt.Printf("[AckTracker] Received an ACK for unknown message id %s from elevator %d\n", ack.AckID, ack.ElevatorID)
+			}
+
+		//If elevator go offline while we wait for ack this statement will clear their acks for the expected ack in all valid acktrackers
+		case lostIDs := <-peers.PeerLostCh:
+			for _, tracker := range oa.Tracker {
+				for _, lostID := range lostIDs {
+					if acked, exists := tracker.ExpectedAcks[lostID]; exists && !acked {
+						tracker.ExpectedAcks[lostID] = true
+						fmt.Printf("[AckTracker] Marking lost elevator %d as acked for message %s\n", lostID, tracker.MsgID)
+					}
+				}
+
+				if tracker.AllAcked() {
+					tracker.Terminate()
+					oa.DeleteAckTracker(tracker.MsgID)
+				}
 			}
 		}
 	}

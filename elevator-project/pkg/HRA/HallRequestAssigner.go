@@ -141,12 +141,17 @@ func HRALoop(elevatorFSM *elevator.Elevator, msgTx chan message.Message, tracker
 
 	for range ticker.C {
 		if config.IsMaster {
-			newOrder, _, err := HRARun(state.MasterStateStore)
+			newOrder, input, err := HRARun(state.MasterStateStore)
 			if err != nil {
 				fmt.Println("HRA error:", err)
 				continue
 			}
 			if !utils.CompareMaps(newOrder, state.MasterStateStore.CurrentOrders) {
+				PrintHRAInput(input)
+				fmt.Printf("[HRA] Master sending the output in MsgID: %s\n", message.MsgCounter.Get())
+				for k, v := range newOrder {
+					fmt.Printf("%6v : %+v\n", k, v)
+				}
 				state.MasterStateStore.CurrentOrders = newOrder
 				elevatorFSM.SetHallLigths(state.MasterStateStore.HallRequests)
 				// Send new order to the order sender worker.
