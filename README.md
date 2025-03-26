@@ -1,2 +1,1 @@
-# Sanntid
-TTK4145 - Sanntid
+Lab exercises in TTK4145 - Sanntidsprogrammer
