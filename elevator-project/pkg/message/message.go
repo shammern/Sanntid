@@ -3,7 +3,7 @@ package message
 import (
 	"elevator-project/pkg/config"
 	"elevator-project/pkg/drivers"
-	RM "elevator-project/pkg/requestmatrix"
+	"elevator-project/pkg/requestmatrix"
 	"fmt"
 	"sync"
 	"time"
@@ -34,7 +34,7 @@ type ElevatorState struct {
 	CurrentFloor    int
 	TravelDirection int
 	LastUpdated     time.Time
-	RequestMatrix   RM.RequestMatrixDTO
+	RequestMatrix   requestmatrix.RequestMatrixDTO
 	ErrorTrigger    int
 }
 

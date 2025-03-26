@@ -5,18 +5,19 @@ import (
 	"elevator-project/pkg/config"
 	"elevator-project/pkg/drivers"
 	"elevator-project/pkg/elevator"
+	"elevator-project/pkg/master"
 	"elevator-project/pkg/message"
 	"elevator-project/pkg/network/peers"
-	"elevator-project/pkg/state"
+	"elevator-project/pkg/systemdata"
 	"elevator-project/pkg/utils"
 	"fmt"
 	"time"
 )
 
-var CurrentMasterID int = -1
-
-func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, msgTx chan message.Message, elevatorFSM *elevator.Elevator, masterAnnounced chan struct{}) {
+// Messagehandler receives all messages from network and routes them based on messagetype
+func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, msgTx chan message.Message, elevatorFSM *elevator.Elevator, ch_ackTracker chan *message.AckTracker, masterAnnounced chan struct{}) {
 	for msg := range msgRx {
+		//Filter out own messages unless they are of type RecoveryState
 		if msg.Type != message.RecoveryState && msg.ElevatorID == config.ElevatorID {
 			continue
 		}
@@ -26,6 +27,8 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 			ackChan <- msg
 
 		case message.OrderDelegation:
+			SendAck(msg, msgTx)
+			//Extracts OrderData and send them to elevator
 			orderData := msg.OrderData
 
 			orders := elevator.ConvertOrderDataToOrders(orderData)
@@ -33,39 +36,38 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 				elevatorFSM.SendOrderToFSM(order)
 			}
 
-			state.MasterStateStore.SetAllHallRequest(msg.HallRequests)
-			elevatorFSM.SetHallLigths(state.MasterStateStore.HallRequests)
-
-			SendAck(msg, msgTx)
+			systemdata.MasterStateStore.SetHallRequests(msg.HallRequests)
+			elevatorFSM.SetHallLigths(systemdata.MasterStateStore.HallRequests)
 
 		case message.CompletedOrder:
-			//TODO: Notify
 			SendAck(msg, msgTx)
+
+			//Updates systemdata and updates light status
 			fmt.Printf("[MH] Order has been completed: ElevatorID: %d, Floor: %d, ButtonType: %s\n", msg.ElevatorID, msg.ButtonEvent.Floor, utils.ButtonTypeToString(msg.ButtonEvent.Button))
-			state.MasterStateStore.ClearOrder(msg.ButtonEvent, msg.ElevatorID)
-			state.MasterStateStore.ClearHallRequest(msg.ButtonEvent)
-			elevatorFSM.SetHallLigths(state.MasterStateStore.HallRequests)
+			systemdata.MasterStateStore.ClearOrderFromElevator(msg.ButtonEvent, msg.ElevatorID)
+			systemdata.MasterStateStore.ClearHallRequest(msg.ButtonEvent)
+			elevatorFSM.SetHallLigths(systemdata.MasterStateStore.HallRequests)
 
 		case message.ButtonEvent:
 
 			if config.IsMaster {
 				switch msg.ButtonEvent.Button {
 				case drivers.BT_HallDown, drivers.BT_HallUp:
-					if !state.MasterStateStore.GetHallOrders()[msg.ButtonEvent.Floor][int(msg.ButtonEvent.Button)] {
-						state.MasterStateStore.SetHallRequest(msg.ButtonEvent)
+					if !systemdata.MasterStateStore.GetHallRequests()[msg.ButtonEvent.Floor][int(msg.ButtonEvent.Button)] {
+						systemdata.MasterStateStore.SetHallRequest(msg.ButtonEvent)
 					}
 
 				case drivers.BT_Cab:
-					if !state.MasterStateStore.Elevators[msg.ElevatorID].RequestMatrix.CabRequests[msg.ButtonEvent.Floor] {
-						state.MasterStateStore.Elevators[msg.ElevatorID].RequestMatrix.CabRequests[msg.ButtonEvent.Floor] = true
+					if !systemdata.MasterStateStore.Elevators[msg.ElevatorID].RequestMatrix.CabRequests[msg.ButtonEvent.Floor] {
+						systemdata.MasterStateStore.Elevators[msg.ElevatorID].RequestMatrix.CabRequests[msg.ButtonEvent.Floor] = true
 					}
-					
+
 				}
 			}
 			SendAck(msg, msgTx)
 
 		case message.ElevatorStatus:
-			status := state.ElevatorStatus{
+			status := systemdata.ElevatorStatus{
 				ElevatorID:      msg.ElevatorID,
 				State:           msg.StateData.State,
 				CurrentFloor:    msg.StateData.CurrentFloor,
@@ -75,20 +77,20 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 				Available:       msg.StateData.Available,
 				ErrorTrigger:    msg.StateData.ErrorTrigger,
 			}
-			state.MasterStateStore.UpdateStatus(status)
+			systemdata.MasterStateStore.UpdateElevatorStatus(status)
 
-			if msg.ElevatorID == CurrentMasterID {
-				state.MasterStateStore.HallRequests = msg.HallRequests
+			if msg.ElevatorID == config.CurrentMasterID {
+				systemdata.MasterStateStore.HallRequests = msg.HallRequests
 			}
 
 		case message.MasterQuery:
-			go BroadcastMasterAnnouncement(msgTx, CurrentMasterID)
+			go master.BroadcastMasterAnnouncement(msgTx, config.CurrentMasterID, ch_ackTracker)
 
 		case message.MasterAnnouncement:
-			if msg.MasterID != CurrentMasterID {
+			if msg.MasterID != config.CurrentMasterID {
 				fmt.Println("[MH] Received MasterAnnouncement:", msg.MasterID)
-				CurrentMasterID = msg.MasterID
-				config.IsMaster = (config.ElevatorID == CurrentMasterID)
+				config.CurrentMasterID = msg.MasterID
+				config.IsMaster = (config.ElevatorID == config.CurrentMasterID)
 
 				select {
 				case masterAnnounced <- struct{}{}:
@@ -109,7 +111,7 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 		case message.RecoveryQuery:
 			if config.IsMaster {
 				var recoverStateData *message.ElevatorState
-				if status, exists := state.MasterStateStore.Elevators[msg.ElevatorID]; exists {
+				if status, exists := systemdata.MasterStateStore.Elevators[msg.ElevatorID]; exists {
 					// If a record exists, include the stored cab orders
 					recoverStateData = &message.ElevatorState{
 						ElevatorID:      status.ElevatorID,
@@ -140,11 +142,11 @@ func StartWorldviewBC(e *elevator.Elevator, msgTx chan message.Message, counter 
 
 	for range ticker.C {
 		status := e.GetStatus()
-		state.MasterStateStore.UpdateStatus(status)
+		systemdata.MasterStateStore.UpdateElevatorStatus(status)
 		stateMsg := message.Message{
 			Type:         message.ElevatorStatus,
 			ElevatorID:   status.ElevatorID,
-			HallRequests: state.MasterStateStore.HallRequests,
+			HallRequests: systemdata.MasterStateStore.HallRequests,
 
 			StateData: &message.ElevatorState{
 				ElevatorID:      status.ElevatorID,
@@ -179,7 +181,7 @@ func MonitorSystemInputs(elevatorFSM *elevator.Elevator) {
 
 			if config.IsMaster {
 				if len(peers.LatestPeerUpdate.Peers) > 1 {
-					state.MasterStateStore.SetHallRequest(be)
+					systemdata.MasterStateStore.SetHallRequest(be)
 				} else {
 					fmt.Println("[ERROR] Elevator is offline and wont service hallcalls")
 				}
@@ -254,7 +256,7 @@ func OrderSenderWorker(orderRequestCh <-chan HRA.Output, msgTx chan message.Mess
 					ElevatorID:   config.ElevatorID,
 					MsgID:        msgID.Next(),
 					OrderData:    req.Orders,
-					HallRequests: state.MasterStateStore.HallRequests,
+					HallRequests: systemdata.MasterStateStore.HallRequests,
 				}
 
 				fmt.Printf("[MH: Master] Staring sending of MsgID: %s\n", orderMsg.MsgID)

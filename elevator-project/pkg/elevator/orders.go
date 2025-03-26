@@ -4,7 +4,7 @@ import (
 	"elevator-project/pkg/config"
 	"elevator-project/pkg/drivers"
 	"elevator-project/pkg/message"
-	"elevator-project/pkg/state"
+	"elevator-project/pkg/systemdata"
 	"elevator-project/pkg/utils"
 	"fmt"
 	"strconv"
@@ -154,7 +154,6 @@ func (e *Elevator) clearHallReqsAtFloor() {
 	}
 }
 
-
 func (e *Elevator) UpdateElevatorState(ev FsmEvent) {
 	e.ch_fsmEvents <- ev
 }
@@ -173,8 +172,8 @@ func (e *Elevator) NotifyMaster(msgType message.MessageType, event drivers.Butto
 
 		if msgType == message.CompletedOrder {
 			// Clear the order from the MasterStore.
-			state.MasterStateStore.ClearOrder(event, config.ElevatorID)
-			state.MasterStateStore.ClearHallRequest(event)
+			systemdata.MasterStateStore.ClearOrderFromElevator(event, config.ElevatorID)
+			systemdata.MasterStateStore.ClearHallRequest(event)
 
 		}
 	}
