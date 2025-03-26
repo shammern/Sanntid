@@ -1,110 +1,68 @@
-package RM
-
-import (
-	"elevator-project/pkg/drivers"
-	"errors"
-	"fmt"
-)
+package requestmatrix
 
 type RequestMatrix struct {
-	HallRequests [][2]bool
-	CabRequests  []bool
+	hallRequests [][2]bool
+	cabRequests  []bool
+}
+
+type RequestMatrixDTO struct {
+	HallRequests [][2]bool `json:"hallRequests"`
+	CabRequests  []bool    `json:"cabRequests"`
 }
 
 func NewRequestMatrix(numFloors int) *RequestMatrix {
 	rm := &RequestMatrix{
-		HallRequests: make([][2]bool, numFloors),
-		CabRequests:  make([]bool, numFloors),
+		hallRequests: make([][2]bool, numFloors),
+		cabRequests:  make([]bool, numFloors),
 	}
 	return rm
 }
 
-func (rm *RequestMatrix) SetHallRequest(floor int, direction int, active bool) error {
-	if floor < 0 || floor >= len(rm.HallRequests) {
-		return errors.New("floor out of range")
+func (rm *RequestMatrix) SetHallRequest(floor int, direction int, active bool) {
+	if floor < 0 || floor >= len(rm.hallRequests) {
+		return
 	}
 	if direction < 0 || direction > 1 {
-		return errors.New("invalid hall direction")
+		return
 	}
-	rm.HallRequests[floor][direction] = active
-	return nil
+	rm.hallRequests[floor][direction] = active
 }
 
-func (rm *RequestMatrix) SetCabRequest(floor int, active bool) error {
-	if floor < 0 || floor >= len(rm.CabRequests) {
-		return errors.New("floor out of range")
+func (rm *RequestMatrix) SetCabRequest(floor int, active bool) {
+	if floor < 0 || floor >= len(rm.cabRequests) {
+		return
 	}
-	rm.CabRequests[floor] = active
-	return nil
+	rm.cabRequests[floor] = active
 }
 
-func (rm *RequestMatrix) ClearHallRequest(floor int, direction int) error {
-	return rm.SetHallRequest(floor, direction, false)
+func (rm *RequestMatrix) SetAllHallRequest(orders [][2]bool) {
+	rm.hallRequests = orders
 }
 
-func (rm *RequestMatrix) ClearCabRequest(floor int) error {
-	return rm.SetCabRequest(floor, false)
+func (rm *RequestMatrix) SetAllCabRequest(orders []bool) {
+	rm.cabRequests = orders
 }
 
-func (rm *RequestMatrix) HasHallRequest(floor int, direction int) (bool, error) {
-	if floor < 0 || floor >= len(rm.HallRequests) {
-		return false, errors.New("floor out of range")
-	}
-	if direction < 0 || direction > 1 {
-		return false, errors.New("invalid hall direction")
-	}
-	return rm.HallRequests[floor][direction], nil
+func (rm *RequestMatrix) ClearHallRequest(floor int, direction int) {
+	rm.SetHallRequest(floor, direction, false)
 }
 
-func (rm *RequestMatrix) HasCabRequest(floor int) (bool, error) {
-	if floor < 0 || floor >= len(rm.CabRequests) {
-		return false, errors.New("floor out of range")
-	}
-	return rm.CabRequests[floor], nil
+func (rm *RequestMatrix) ClearCabRequest(floor int) {
+	rm.SetCabRequest(floor, false)
 }
 
-func (rm *RequestMatrix) DebugPrint() {
-	fmt.Println("==== Request Matrix ====")
-	for floor, hall := range rm.HallRequests {
-		cabStr := "off"
-		if rm.CabRequests[floor] {
-			cabStr = "on"
-		}
-		hallUpStr := "off"
-		if hall[0] {
-			hallUpStr = "on"
-		}
-		hallDownStr := "off"
-		if hall[1] {
-			hallDownStr = "on"
-		}
-		fmt.Printf("Floor %d: Cab: %s, Hall Up: %s, Hall Down: %s\n", floor, cabStr, hallUpStr, hallDownStr)
-	}
-	fmt.Println("========================")
+func (rm *RequestMatrix) GetCabRequest() []bool {
+	return rm.cabRequests
 }
 
-func GetUnassignedOrders(rm *RequestMatrix) []drivers.ButtonEvent {
-	var orders []drivers.ButtonEvent
+func (rm *RequestMatrix) GetHallRequest() [][2]bool {
+	return rm.hallRequests
+}
 
-	fmt.Println("[DEBUG] Checking request matrix...")
-
-	// Ensure RequestMatrix is properly initialized
-	if rm == nil {
-		fmt.Println("[ERROR] RequestMatrix is nil!")
-		return orders
+// Extracts data from RM to broadcast on network
+func (rm *RequestMatrix) ToDTO() RequestMatrixDTO {
+	return RequestMatrixDTO{
+		HallRequests: rm.GetHallRequest(),
+		CabRequests:  rm.GetCabRequest(),
 	}
-
-	for floor, hallReq := range rm.HallRequests {
-		fmt.Printf("[DEBUG] Floor %d HallRequests: %+v\n", floor, hallReq)
-		for dir, active := range hallReq {
-			if active {
-				fmt.Printf("[DEBUG] Found active request at Floor %d Direction %d\n", floor, dir)
-				orders = append(orders, drivers.ButtonEvent{
-					Floor:  floor,
-					Button: drivers.ButtonType(dir),
-				})
-			}
-		}
-	}
-	return orders
 }
