@@ -42,14 +42,14 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 		case message.CompletedOrder:
 			SendAck(msg, msgTx)
 
-			//Updates systemdata and updates light status
+			//Updates systemdata and updates lights
 			fmt.Printf("[MH] Order has been completed: ElevatorID: %d, Floor: %d, ButtonType: %s\n", msg.ElevatorID, msg.ButtonEvent.Floor, utils.ButtonTypeToString(msg.ButtonEvent.Button))
 			systemdata.MasterStateStore.ClearOrderFromElevator(msg.ButtonEvent, msg.ElevatorID)
 			systemdata.MasterStateStore.ClearHallRequest(msg.ButtonEvent)
 			elevatorFSM.SetHallLigths(systemdata.MasterStateStore.HallRequests)
 
 		case message.ButtonEvent:
-
+			//If master adds the buttonEvent to the systemData
 			if config.IsMaster {
 				switch msg.ButtonEvent.Button {
 				case drivers.BT_HallDown, drivers.BT_HallUp:
@@ -61,12 +61,12 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 					if !systemdata.MasterStateStore.Elevators[msg.ElevatorID].RequestMatrix.CabRequests[msg.ButtonEvent.Floor] {
 						systemdata.MasterStateStore.Elevators[msg.ElevatorID].RequestMatrix.CabRequests[msg.ButtonEvent.Floor] = true
 					}
-
 				}
 			}
 			SendAck(msg, msgTx)
 
 		case message.ElevatorStatus:
+			//Extract elevatorstatus and updates the systemData
 			status := systemdata.ElevatorStatus{
 				ElevatorID:      msg.ElevatorID,
 				State:           msg.StateData.State,
@@ -79,6 +79,7 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 			}
 			systemdata.MasterStateStore.UpdateElevatorStatus(status)
 
+			//If receiving update from master also updates Hallrequests
 			if msg.ElevatorID == config.CurrentMasterID {
 				systemdata.MasterStateStore.HallRequests = msg.HallRequests
 			}
@@ -87,6 +88,7 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 			go master.BroadcastMasterAnnouncement(msgTx, config.CurrentMasterID, ch_ackTracker)
 
 		case message.MasterAnnouncement:
+			// Updates master if new masterID is received
 			if msg.MasterID != config.CurrentMasterID {
 				fmt.Println("[MH] Received MasterAnnouncement:", msg.MasterID)
 				config.CurrentMasterID = msg.MasterID
@@ -99,7 +101,9 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 			}
 
 		case message.RecoveryState:
+			// Gets an update of own last reported elevatorstate in case of crash, then recovers that info into elevatorFSM
 			if msg.ElevatorID == config.ElevatorID {
+				// Acks message to stop quering for recovery data
 				ackChan <- message.Message{
 					ElevatorID: config.ElevatorID,
 					AckID:      fmt.Sprintf("%d-%d", config.ElevatorID, 0),
@@ -109,6 +113,7 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 			}
 
 		case message.RecoveryQuery:
+			// If master checks and answer if a known recoverystate of the elevator quering exists, then passes it along
 			if config.IsMaster {
 				var recoverStateData *message.ElevatorState
 				if status, exists := systemdata.MasterStateStore.Elevators[msg.ElevatorID]; exists {
@@ -164,6 +169,7 @@ func StartWorldviewBC(e *elevator.Elevator, msgTx chan message.Message, counter 
 	}
 }
 
+// Monitors elevator hardware and passes input along to internal handling system
 func MonitorSystemInputs(elevatorFSM *elevator.Elevator) {
 	drvButtons := make(chan drivers.ButtonEvent)
 	drvFloors := make(chan int)
@@ -180,6 +186,7 @@ func MonitorSystemInputs(elevatorFSM *elevator.Elevator) {
 		case be := <-drvButtons:
 
 			if config.IsMaster {
+				//If no other elevators are present on the network, do nothing about hallcalls
 				if len(peers.LatestPeerUpdate.Peers) > 1 {
 					systemdata.MasterStateStore.SetHallRequest(be)
 				} else {
@@ -189,6 +196,7 @@ func MonitorSystemInputs(elevatorFSM *elevator.Elevator) {
 				elevatorFSM.NotifyMaster(message.ButtonEvent, be)
 			}
 
+			//Pass cabcalls directly to elevatoFMS
 			if be.Button == drivers.BT_Cab {
 				order := elevator.Order{
 					Event: be,
@@ -227,7 +235,7 @@ func SendAck(msg message.Message, msgTx chan message.Message) {
 	msgTx <- ackMsg
 }
 
-// orderSenderWorker continuously listens for order requests and handles cancellation/resending.
+// Continuously listens for order requests and handles cancellation/resending.
 func OrderSenderWorker(orderRequestCh <-chan HRA.Output, msgTx chan message.Message, trackerChan chan *message.AckTracker, msgID *message.MsgID) {
 	var currentTracker *message.AckTracker
 
@@ -235,22 +243,22 @@ func OrderSenderWorker(orderRequestCh <-chan HRA.Output, msgTx chan message.Mess
 	defer resendTicker.Stop()
 
 	for {
+		// Only send orders if elevato is Master
 		if config.IsMaster {
 			select {
-			// New order received from HRALoop.
 			case req := <-orderRequestCh:
 				// Cancel previous order if any.
 				if currentTracker != nil {
 					currentTracker.Terminate()
 				}
-				// Create a new tracker.
+
+				//Extract data from HRAworker, repack and broadcast on network
 				currentMsgID := msgID.Get()
 				tracker := message.NewAckTracker(currentMsgID, utils.GetActiveElevators())
 				tracker.SetOwnAck()
 				trackerChan <- tracker
 				currentTracker = tracker
 
-				// Prepare the message that will be repeatedly sent.
 				orderMsg := message.Message{
 					Type:         message.OrderDelegation,
 					ElevatorID:   config.ElevatorID,
@@ -268,18 +276,22 @@ func OrderSenderWorker(orderRequestCh <-chan HRA.Output, msgTx chan message.Mess
 			resendLoop:
 				for {
 					select {
+					//All units on network has ack'd the order
 					case <-tracker.GetDoneChan():
 						fmt.Printf("[MH: Master] Terminating sending of MsgID: %s, stopping order broadcast\n", orderMsg.MsgID)
 						break resendLoop
 
+					//Resend order periodically
 					case <-resendTicker.C:
 						fmt.Println("[MH: Master] Resending order for MsgID: ", orderMsg.MsgID)
 						msgTx <- orderMsg
 
+					//Stop sending message if noone anwsers after a given time
 					case <-timeoutTicker.C:
 						fmt.Println("[MH: Master] Timeout: Terminating sending of MsgID: ", orderMsg.MsgID)
 						break resendLoop
 
+					//Stop sending if a new order is received from HRAworker
 					case newReq := <-orderRequestCh:
 						currentTracker.Terminate()
 
