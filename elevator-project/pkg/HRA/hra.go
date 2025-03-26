@@ -4,7 +4,7 @@ import (
 	"elevator-project/pkg/config"
 	"elevator-project/pkg/elevator"
 	"elevator-project/pkg/message"
-	"elevator-project/pkg/state"
+	"elevator-project/pkg/systemdata"
 	"elevator-project/pkg/utils"
 	"encoding/json"
 	"fmt"
@@ -37,22 +37,22 @@ func HRAWorker(elevatorFSM *elevator.Elevator, msgTx chan message.Message, track
 
 	for range ticker.C {
 		if config.IsMaster {
-			newOrder, input, err := calculateOptimalOrderAssignment(state.MasterStateStore)
+			newOrder, input, err := calculateOptimalOrderAssignment(systemdata.MasterStateStore)
 			if err != nil {
 				fmt.Println("HRA error:", err)
 				continue
 			}
 
 			//Checks wether newly calculated orders are different from the currelty active order
-			if !utils.CompareMaps(newOrder, state.MasterStateStore.CurrentOrders) {
+			if !utils.CompareMaps(newOrder, systemdata.MasterStateStore.CurrentOrders) {
 
 				PrintHRAInput(input)
 				fmt.Printf("[HRA] Master sending the output in MsgID: %s\n", message.MsgCounter.Get())
 				for k, v := range newOrder {
 					fmt.Printf("%6v : %+v\n", k, v)
 				}
-				state.MasterStateStore.CurrentOrders = newOrder
-				elevatorFSM.SetHallLigths(state.MasterStateStore.HallRequests)
+				systemdata.MasterStateStore.CurrentOrders = newOrder
+				elevatorFSM.SetHallLigths(systemdata.MasterStateStore.HallRequests)
 
 				// Send new order to the order sender worker to be broadcasted
 				orderRequestCh <- Output{Orders: newOrder}
@@ -68,7 +68,7 @@ func HRAWorker(elevatorFSM *elevator.Elevator, msgTx chan message.Message, track
 }
 
 // Collects all hallrequests from statestore and returns optimal order assigment
-func calculateOptimalOrderAssignment(st *state.Store) (map[string][][2]bool, Input, error) {
+func calculateOptimalOrderAssignment(st *systemdata.SystemData) (map[string][][2]bool, Input, error) {
 	hraExecutable := ""
 	switch runtime.GOOS {
 	case "linux":
@@ -161,11 +161,11 @@ func PrintHRAInput(input Input) {
 		fmt.Printf("  Floor %d: Up: %t, Down: %t\n", floor, req[0], req[1])
 	}
 	fmt.Println("States:")
-	for id, state := range input.States {
+	for id, systemdata := range input.States {
 		fmt.Printf("  Elevator %s:\n", id)
-		fmt.Printf("    Behavior   : %s\n", state.Behavior)
-		fmt.Printf("    Floor      : %d\n", state.Floor)
-		fmt.Printf("    Direction  : %s\n", state.Direction)
-		fmt.Printf("    CabRequests: %v\n", state.CabRequests)
+		fmt.Printf("    Behavior   : %s\n", systemdata.Behavior)
+		fmt.Printf("    Floor      : %d\n", systemdata.Floor)
+		fmt.Printf("    Direction  : %s\n", systemdata.Direction)
+		fmt.Printf("    CabRequests: %v\n", systemdata.CabRequests)
 	}
 }

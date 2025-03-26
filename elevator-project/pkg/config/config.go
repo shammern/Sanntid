@@ -19,7 +19,7 @@ const (
 	DoorOpenThreshold          = 5 * time.Second
 	MasterTimeout              = 2 * time.Second
 	ElevatorInitTimeout        = 1 * time.Second
-	OrderCalculationPeriod    = 100 * time.Millisecond
+	OrderCalculationPeriod     = 100 * time.Millisecond
 
 	BCport  = 15500
 	P2Pport = 16000
@@ -28,4 +28,5 @@ const (
 )
 
 var IsMaster = false
+var CurrentMasterID = -1
 var ElevatorID = 0

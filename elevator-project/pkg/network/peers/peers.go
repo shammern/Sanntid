@@ -3,7 +3,7 @@ package peers
 import (
 	"elevator-project/pkg/config"
 	"elevator-project/pkg/network/conn"
-	"elevator-project/pkg/state"
+	"elevator-project/pkg/systemdata"
 	"fmt"
 	"net"
 	"sort"
@@ -91,7 +91,7 @@ func Receiver(port int, peerUpdateCh chan<- PeerUpdate) {
 }
 
 // Monitors the network and triggers events when a peer is disconnects/connects
-func P2Pmonitor(stateStore *state.Store) {
+func P2Pmonitor(stateStore *systemdata.SystemData) {
 	ch_peerUpdate := make(chan PeerUpdate)
 	ch_peerTxEnable := make(chan bool)
 	go Transmitter(config.P2Pport, strconv.Itoa(config.ElevatorID), ch_peerTxEnable)

@@ -4,8 +4,8 @@ import (
 	"elevator-project/pkg/config"
 	"elevator-project/pkg/drivers"
 	"elevator-project/pkg/message"
-	RM "elevator-project/pkg/requestmatrix"
-	"elevator-project/pkg/state"
+	"elevator-project/pkg/requestmatrix"
+	"elevator-project/pkg/systemdata"
 	"fmt"
 	"time"
 )
@@ -60,7 +60,7 @@ type Elevator struct {
 	doorObstructed  bool
 	errorTrigger    ErrorType
 
-	requestMatrix *RM.RequestMatrix
+	requestMatrix *requestmatrix.RequestMatrix
 	msgCounter    *message.MsgID
 
 	ch_orders     chan Order
@@ -83,7 +83,7 @@ func NewElevator(ElevatorID int, ch_msgTx chan message.Message, counter *message
 		msgCounter:      counter,
 		travelDirection: Stop,
 		ch_ackTracker:   ch_trackerChan,
-		requestMatrix:   RM.NewRequestMatrix(config.NumFloors),
+		requestMatrix:   requestmatrix.NewRequestMatrix(config.NumFloors),
 		doorObstructed:  false,
 	}
 }
@@ -139,7 +139,7 @@ Loop:
 
 			e.state = Init
 			e.currentFloor = validFloor
-			e.requestMatrix = RM.NewRequestMatrix(config.NumFloors)
+			e.requestMatrix = requestmatrix.NewRequestMatrix(config.NumFloors)
 			break Loop
 		}
 	}
@@ -198,22 +198,22 @@ func (e *Elevator) chooseDirection() Direction {
 	}
 }
 
-func (e *Elevator) GetRequestMatrix() *RM.RequestMatrix {
+func (e *Elevator) GetRequestMatrix() *requestmatrix.RequestMatrix {
 	return e.requestMatrix
 }
 
-func (e *Elevator) GetStatus() state.ElevatorStatus {
-	//var reqMatrix RM.RequestMatrix
+func (e *Elevator) GetStatus() systemdata.ElevatorStatus {
+	//var reqMatrix requestmatrix.RequestMatrix
 	available := true
 	if e.state == Error {
 		available = false
 	}
 	/*
-	if e.requestMatrix != nil {
-		reqMatrix = *e.requestMatrix
-	}
+		if e.requestMatrix != nil {
+			reqMatrix = *e.requestMatrix
+		}
 	*/
-	return state.ElevatorStatus{
+	return systemdata.ElevatorStatus{
 		ElevatorID:      e.ElevatorID,
 		State:           int(e.state),
 		CurrentFloor:    e.currentFloor,
