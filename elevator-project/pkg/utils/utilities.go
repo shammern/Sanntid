@@ -38,7 +38,7 @@ func ButtonIntToString(button int) string {
 
 func MessageTypeToString(m message.MessageType) string {
 	switch m {
-	case message.State:
+	case message.ElevatorStatus:
 		return "State"
 	case message.ButtonEvent:
 		return "ButtonEvent"
