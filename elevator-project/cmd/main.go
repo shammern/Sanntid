@@ -1,4 +1,3 @@
-// main.go
 package main
 
 import (
@@ -15,19 +14,19 @@ import (
 )
 
 func main() {
-
 	flag.IntVar(&config.ElevatorID, "id", 0, "ElevatorID")
 	flag.Parse()
 
 	drivers.Init(config.ElevatorAddresses[config.ElevatorID], config.NumFloors)
-	message.InitMsgCounter(config.ElevatorID)
+	message.InitMsgCounter()
 
 	msgTx := make(chan message.Message)
 	msgRx := make(chan message.Message)
 	ackChan := make(chan message.Message)
 	ackTrackerChan := make(chan *message.AckTracker)
-	orderChan := make(chan HRA.OrderData)
-	masterAnnounced := make(chan struct{}, 1) //Buffer size
+	orderChan := make(chan HRA.Output)
+	masterAnnounced := make(chan struct{}, 1)
+
 	go bcast.Transmitter(config.BCport, msgTx)
 	go bcast.Receiver(config.BCport, msgRx)
 
@@ -35,20 +34,18 @@ func main() {
 	elevator := elevator.NewElevator(config.ElevatorID, msgTx, &message.MsgCounter, ackTrackerChan)
 
 	go ackMonitor.RunAckMonitor()
-	go app.MessageHandler(msgRx, ackChan, msgTx, elevator, ackTrackerChan, masterAnnounced)
+	go app.MessageHandler(msgRx, ackChan, msgTx, elevator, masterAnnounced)
 	go peers.P2Pmonitor(state.MasterStateStore)
 	go app.InitMasterDiscovery(msgTx, masterAnnounced)
 	go app.MonitorMasterHeartbeat(state.MasterStateStore, msgTx)
+	go HRA.HRAWorker(elevator, msgTx, ackTrackerChan, &message.MsgCounter, orderChan)
+	go app.OrderSenderWorker(orderChan, msgTx, ackTrackerChan, &message.MsgCounter)
+	go app.MonitorSystemInputs(elevator)
+
 	elevator.InitElevator()
 	elevator.SetHallLigths(state.MasterStateStore.HallRequests)
 
-	go app.MonitorSystemInputs(elevator)
-
-	go HRA.HRALoop(elevator, msgTx, ackTrackerChan, &message.MsgCounter, orderChan)
-	go app.OrderSenderWorker(orderChan, msgTx, ackTrackerChan, &message.MsgCounter)
-
 	go elevator.Run()
-
 	go app.StartWorldviewBC(elevator, msgTx, &message.MsgCounter)
 
 	select {}

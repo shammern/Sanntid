@@ -2,7 +2,6 @@ package app
 
 import (
 	"elevator-project/pkg/HRA"
-	RM "elevator-project/pkg/RequestMatrix"
 	"elevator-project/pkg/config"
 	"elevator-project/pkg/drivers"
 	"elevator-project/pkg/elevator"
@@ -16,7 +15,7 @@ import (
 
 var CurrentMasterID int = -1
 
-func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, msgTx chan message.Message, elevatorFSM *elevator.Elevator, trackerChan chan *message.AckTracker, masterAnnounced chan struct{}) {
+func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, msgTx chan message.Message, elevatorFSM *elevator.Elevator, masterAnnounced chan struct{}) {
 	for msg := range msgRx {
 		if msg.Type != message.RecoveryState && msg.ElevatorID == config.ElevatorID {
 			continue
@@ -29,9 +28,9 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 		case message.OrderDelegation:
 			orderData := msg.OrderData
 
-			events := elevator.ConvertOrderDataToOrders(orderData)
-			for _, event := range events {
-				elevatorFSM.Orders <- event
+			orders := elevator.ConvertOrderDataToOrders(orderData)
+			for _, order := range orders {
+				elevatorFSM.SendOrderToFSM(order)
 			}
 
 			state.MasterStateStore.SetAllHallRequest(msg.HallRequests)
@@ -43,7 +42,7 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 			//TODO: Notify
 			SendAck(msg, msgTx)
 			fmt.Printf("[MH] Order has been completed: ElevatorID: %d, Floor: %d, ButtonType: %s\n", msg.ElevatorID, msg.ButtonEvent.Floor, utils.ButtonTypeToString(msg.ButtonEvent.Button))
-			//state.MasterStateStore.ClearOrder(msg.ButtonEvent, msg.ElevatorID)
+			state.MasterStateStore.ClearOrder(msg.ButtonEvent, msg.ElevatorID)
 			state.MasterStateStore.ClearHallRequest(msg.ButtonEvent)
 			elevatorFSM.SetHallLigths(state.MasterStateStore.HallRequests)
 
@@ -60,11 +59,12 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 					if !state.MasterStateStore.Elevators[msg.ElevatorID].RequestMatrix.CabRequests[msg.ButtonEvent.Floor] {
 						state.MasterStateStore.Elevators[msg.ElevatorID].RequestMatrix.CabRequests[msg.ButtonEvent.Floor] = true
 					}
+					
 				}
 			}
 			SendAck(msg, msgTx)
 
-		case message.State:
+		case message.ElevatorStatus:
 			status := state.ElevatorStatus{
 				ElevatorID:      msg.ElevatorID,
 				State:           msg.StateData.State,
@@ -73,6 +73,7 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 				RequestMatrix:   msg.StateData.RequestMatrix,
 				LastUpdated:     msg.StateData.LastUpdated,
 				Available:       msg.StateData.Available,
+				ErrorTrigger:    msg.StateData.ErrorTrigger,
 			}
 			state.MasterStateStore.UpdateStatus(status)
 
@@ -109,15 +110,14 @@ func MessageHandler(msgRx chan message.Message, ackChan chan message.Message, ms
 			if config.IsMaster {
 				var recoverStateData *message.ElevatorState
 				if status, exists := state.MasterStateStore.Elevators[msg.ElevatorID]; exists {
-					// If a record exists, include the stored cab orders.
+					// If a record exists, include the stored cab orders
 					recoverStateData = &message.ElevatorState{
 						ElevatorID:      status.ElevatorID,
 						State:           status.State,
 						CurrentFloor:    status.CurrentFloor,
 						TravelDirection: status.TravelDirection,
-						RequestMatrix: RM.RequestMatrix{
-							CabRequests: status.RequestMatrix.CabRequests,
-						},
+						ErrorTrigger:    status.ErrorTrigger,
+						RequestMatrix:   status.RequestMatrix,
 					}
 
 					recoverMsg := message.Message{
@@ -142,7 +142,7 @@ func StartWorldviewBC(e *elevator.Elevator, msgTx chan message.Message, counter 
 		status := e.GetStatus()
 		state.MasterStateStore.UpdateStatus(status)
 		stateMsg := message.Message{
-			Type:         message.State,
+			Type:         message.ElevatorStatus,
 			ElevatorID:   status.ElevatorID,
 			HallRequests: state.MasterStateStore.HallRequests,
 
@@ -154,6 +154,7 @@ func StartWorldviewBC(e *elevator.Elevator, msgTx chan message.Message, counter 
 				TravelDirection: status.TravelDirection,
 				LastUpdated:     time.Now(),
 				RequestMatrix:   status.RequestMatrix,
+				ErrorTrigger:    status.ErrorTrigger,
 			},
 		}
 
@@ -192,7 +193,7 @@ func MonitorSystemInputs(elevatorFSM *elevator.Elevator) {
 					Flag:  true,
 				}
 
-				elevatorFSM.Orders <- order
+				elevatorFSM.SendOrderToFSM(order)
 				drivers.SetButtonLamp(drivers.BT_Cab, be.Floor, true)
 			}
 
@@ -225,7 +226,7 @@ func SendAck(msg message.Message, msgTx chan message.Message) {
 }
 
 // orderSenderWorker continuously listens for order requests and handles cancellation/resending.
-func OrderSenderWorker(orderRequestCh <-chan HRA.OrderData, msgTx chan message.Message, trackerChan chan *message.AckTracker, msgID *message.MsgID) {
+func OrderSenderWorker(orderRequestCh <-chan HRA.Output, msgTx chan message.Message, trackerChan chan *message.AckTracker, msgID *message.MsgID) {
 	var currentTracker *message.AckTracker
 
 	resendTicker := time.NewTicker(config.ResendInterval)
@@ -243,7 +244,7 @@ func OrderSenderWorker(orderRequestCh <-chan HRA.OrderData, msgTx chan message.M
 				// Create a new tracker.
 				currentMsgID := msgID.Get()
 				tracker := message.NewAckTracker(currentMsgID, utils.GetActiveElevators())
-				tracker.ExpectedAcks[config.ElevatorID] = true
+				tracker.SetOwnAck()
 				trackerChan <- tracker
 				currentTracker = tracker
 
@@ -265,7 +266,7 @@ func OrderSenderWorker(orderRequestCh <-chan HRA.OrderData, msgTx chan message.M
 			resendLoop:
 				for {
 					select {
-					case <-tracker.Done:
+					case <-tracker.GetDoneChan():
 						fmt.Printf("[MH: Master] Terminating sending of MsgID: %s, stopping order broadcast\n", orderMsg.MsgID)
 						break resendLoop
 

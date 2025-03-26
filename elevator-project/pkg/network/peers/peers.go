@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-var PeerLostCh = make(chan []int, 2)
+var Ch_peerLost = make(chan []int, 2)
 
 type PeerUpdate struct {
 	Peers []string
@@ -90,29 +90,28 @@ func Receiver(port int, peerUpdateCh chan<- PeerUpdate) {
 	}
 }
 
+// Monitors the network and triggers events when a peer is disconnects/connects
 func P2Pmonitor(stateStore *state.Store) {
-	// This function triggers events when elevators join or leave the network.
-	peerUpdateCh := make(chan PeerUpdate)
-	peerTxEnable := make(chan bool)
-	go Transmitter(config.P2Pport, strconv.Itoa(config.ElevatorID), peerTxEnable)
-	go Receiver(config.P2Pport, peerUpdateCh)
+	ch_peerUpdate := make(chan PeerUpdate)
+	ch_peerTxEnable := make(chan bool)
+	go Transmitter(config.P2Pport, strconv.Itoa(config.ElevatorID), ch_peerTxEnable)
+	go Receiver(config.P2Pport, ch_peerUpdate)
 
 	for {
-		update := <-peerUpdateCh
+		update := <-ch_peerUpdate
 		LatestPeerUpdate = update
 		fmt.Printf("Peer update:\n")
 		fmt.Printf("  Peers:    %q\n", update.Peers)
 		fmt.Printf("  New:      %q\n", update.New)
 		fmt.Printf("  Lost:     %q\n", update.Lost)
 
-		// Mark lost peers as unavailable, but skip our own elevator id.
+		// Mark lost peers as unavailable for new orders, but skip our own elevator id.
 		for _, lostPeer := range update.Lost {
 			if lostPeer == strconv.Itoa(config.ElevatorID) {
 				continue
 			}
 			if peerID, err := strconv.Atoi(lostPeer); err == nil {
 				stateStore.UpdateElevatorAvailability(peerID, false)
-				//fmt.Printf("Marked elevator %d as unavailable\n", peerID)
 			}
 		}
 
@@ -123,7 +122,8 @@ func P2Pmonitor(stateStore *state.Store) {
 					lostIDs = append(lostIDs, id)
 				}
 
-				PeerLostCh <- lostIDs
+				// Sends lost units to ackMonitor
+				Ch_peerLost <- lostIDs
 			}
 		}
 	}

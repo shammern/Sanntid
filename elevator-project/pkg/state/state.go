@@ -1,9 +1,9 @@
 package state
 
 import (
-	RM "elevator-project/pkg/RequestMatrix"
 	"elevator-project/pkg/config"
 	"elevator-project/pkg/drivers"
+	RM "elevator-project/pkg/requestmatrix"
 	"fmt"
 	"strconv"
 	"sync"
@@ -20,7 +20,8 @@ type ElevatorStatus struct {
 	CurrentFloor    int
 	TravelDirection int
 	LastUpdated     time.Time
-	RequestMatrix   RM.RequestMatrix
+	RequestMatrix   RM.RequestMatrixDTO
+	ErrorTrigger    int
 }
 
 // Store holds a map of ElevatorStatus instances.
@@ -34,7 +35,7 @@ type Store struct {
 // NewStore creates a new Store.
 func NewStore() *Store {
 	store := &Store{
-		Elevators:     make(map[int]ElevatorStatus), // start empty
+		Elevators:     make(map[int]ElevatorStatus),      // start empty
 		HallRequests:  make([][2]bool, config.NumFloors), // still need one entry per floor
 		CurrentOrders: make(map[string][][2]bool),        // start empty
 	}
@@ -99,7 +100,7 @@ func (s *Store) ClearHallRequest(button drivers.ButtonEvent) error {
 	return nil
 }
 
-// ClearHallLight clears the light for a specific floor and button for all elevators.
+// ClearHallLight clears the light for a specific floor and button for a specific elevator.
 func (s *Store) ClearOrder(button drivers.ButtonEvent, elevatorID int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -112,7 +113,7 @@ func (s *Store) ClearOrder(button drivers.ButtonEvent, elevatorID int) error {
 		s.Elevators[elevatorID].RequestMatrix.CabRequests[button.Floor] = false
 
 	case drivers.BT_HallUp, drivers.MD_Down:
-		s.Elevators[elevatorID].RequestMatrix.HallRequests[button.Floor][0] = false
+		s.Elevators[elevatorID].RequestMatrix.HallRequests[button.Floor][int(button.Button)] = false
 		s.HallRequests[button.Floor][int(button.Button)] = false
 	}
 
@@ -141,4 +142,3 @@ func (s *Store) UpdateElevatorAvailability(elevatorID int, newState bool) {
 	status.Available = newState
 	s.Elevators[elevatorID] = status
 }
-
