@@ -1,6 +1,5 @@
 Project Description
 
-This project is built on a P2P multicast network, where one elevator acts as a master responsible for delegating hall orders to suitable elevators. 
 The master is dynamically elected using heartbeat monitoring, and if it fails, a new one is automatically chosen from the active peers. 
 To ensure consistency, elevators broadcast their state regularly, keeping a synchronized world view across the system. 
 A recovery system allows elevators to restore their state after failures, 
@@ -10,10 +9,6 @@ The APP module acts as the central coordinator, connecting hardware inputs, stat
 Elevators continue serving cab calls during disconnections and automatically reintegrate into the network once reconnected.
 
 APP:
-    Coordinates the overall system logic.
-    It routes incoming network messages, handles button and sensor inputs, 
-    manages communication with the elevator FSM, and ensures world view updates are broadcast.
-    Includes a central function that connects and synchronizes the elevator logic, hardware, and network layers.
  
 CMD:
     Serves as the entry point of the program (main.go).
@@ -27,9 +22,6 @@ DRIVERS:
     Currently includes only the provided hardware interface code.
 
 ELEVATOR:
-    This is where the finite state machine (FSM) for each elevator is implemented.
-    It handles elevator behavior, movement, order execution, and error detection.
-    Some single-elevator logic remains for debugging and partial implementation purposes.   
 
 HRA:
     Uses externally provided code to calculate hall order assignments.
@@ -42,12 +34,9 @@ MASTER:
     This module ensures there is always a single active master responsible for assigning hall orders and maintaining the global state.
 
 MESSAGE:
-    Contains the different message types to be sent on the network. As well as functions to prepare the messages for transmittion (marshalling to JSON)
     Also includes an ACK tracker system to ensure reliable message delivery in a lossy UDP environment.
 
 NETWORK:
-    Responsible for sending and receiving messages over the network.
-    Implements multicast communication and peer monitoring, including detection of disconnections via heartbeat-based tracking.
 
 REQUESTMATRIX:
     Implements local data structures to store and manage cab and hall request states for each elevator.
